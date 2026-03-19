@@ -1,10 +1,8 @@
-import { useState, useCallback, useContext, createContext } from 'react'
-import {
-  HederaSessionEvent,
-  HederaJsonRpcMethod,
-  DAppConnector,
-} from '@hashgraph/hedera-wallet-connect'
+import { useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { DAppConnector } from '@hashgraph/hedera-wallet-connect'
 import { LedgerId } from '@hashgraph/sdk'
+import { useWalletContext } from '../context/WalletContext'
 
 const dAppConnector = new DAppConnector(
   {
@@ -17,16 +15,19 @@ const dAppConnector = new DAppConnector(
   import.meta.env.VITE_WALLETCONNECT_PROJECT_ID
 )
 
-// Create context for wallet
-const WalletContext = createContext()
-
 export function useWallet() {
-  const [address, setAddress] = useState(null)
-  const [isConnected, setIsConnected] = useState(false)
+  const {
+    account,
+    setAccount,
+    connected,
+    setConnected,
+    connector,
+    setConnector,
+  } = useWalletContext()
   const [isConnecting, setIsConnecting] = useState(false)
   const [error, setError] = useState(null)
-  const [provider, setProvider] = useState(null)
   const [signer, setSigner] = useState(null)
+  const navigate = useNavigate()
 
   const connect = useCallback(async (walletType = 'hashpack') => {
     setIsConnecting(true)
@@ -35,49 +36,47 @@ export function useWallet() {
     try {
       if (walletType === 'hashpack') {
         await dAppConnector.init({ logger: 'error' })
-        const session = await dAppConnector.openModal()
 
-        const accountsFromSession =
-          session?.namespaces?.hedera?.accounts ||
-          dAppConnector.walletConnect?.session?.namespaces?.hedera?.accounts ||
-          []
-
-        const firstAccount = accountsFromSession[0]
-        const accountId = firstAccount ? firstAccount.split(':').pop() : null
-
-        if (!accountId) {
-          throw new Error('Failed to retrieve account information')
-        }
-
-        // Request accounts via JSON-RPC method for session refresh
-        await dAppConnector.request({
-          method: HederaJsonRpcMethod.GetAccounts,
+        dAppConnector.walletConnectClient?.on('session_event', (event) => {
+          console.log('Session event:', event)
         })
 
-        // Update state
-        setAddress(accountId)
-        setIsConnected(true)
-        setProvider(dAppConnector)
+        await dAppConnector.openModal()
 
-        // Store in sessionStorage (not localStorage - security rule)
-        sessionStorage.setItem('walletAddress', accountId)
-        sessionStorage.setItem('walletConnected', 'true')
+        const signers = dAppConnector.signers
+        if (signers && signers.length > 0) {
+          const accountId = signers[0].getAccountId().toString()
 
-        console.log('✅ Wallet connected:', accountId)
+          // Update state
+          setAccount(accountId)
+          setConnected(true)
+          setConnector(dAppConnector)
+          setIsConnecting(false)
+
+          navigate('/dashboard')
+
+          // Store in sessionStorage (not localStorage - security rule)
+          sessionStorage.setItem('walletAddress', accountId)
+          sessionStorage.setItem('walletConnected', 'true')
+
+          console.log('✅ Wallet connected:', accountId)
+        } else {
+          throw new Error('Failed to retrieve account information')
+        }
       }
     } catch (err) {
       console.error('Wallet connection error:', err)
       setError(err.message || 'Failed to connect wallet')
-      setIsConnected(false)
+      setConnected(false)
     } finally {
       setIsConnecting(false)
     }
   }, [])
 
   const disconnect = useCallback(() => {
-    setAddress(null)
-    setIsConnected(false)
-    setProvider(null)
+    setAccount(null)
+    setConnected(false)
+    setConnector(null)
     setSigner(null)
     setError(null)
 
@@ -98,7 +97,7 @@ export function useWallet() {
   }, [])
 
   const executeContract = useCallback(async (contractAddress, abi, functionName, args = []) => {
-    if (!isConnected || !provider) {
+    if (!connected || !connector) {
       throw new Error('Wallet not connected')
     }
 
@@ -111,28 +110,17 @@ export function useWallet() {
       console.error('Contract execution error:', err)
       throw err
     }
-  }, [isConnected, provider])
+  }, [connected, connector])
 
   return {
-    address,
-    isConnected,
+    address: account,
+    isConnected: connected,
     isConnecting,
     error,
-    provider,
+    provider: connector,
     signer,
     connect,
     disconnect,
     executeContract,
   }
-}
-
-// Provider component for global wallet state
-export function WalletProvider({ children }) {
-  const walletState = useWallet()
-
-  return (
-    <WalletContext.Provider value={walletState}>
-      {children}
-    </WalletContext.Provider>
-  )
 }

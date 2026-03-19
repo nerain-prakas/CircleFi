@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
-import { useWallet } from '../hooks/useWallet'
+import { useWalletContext } from '../context/WalletContext'
 import CountdownTimer from '../components/CountdownTimer'
 import MemberCard from '../components/MemberCard'
 import ReputationRing from '../components/ReputationRing'
 
 function Dashboard() {
-  const { address, isConnected } = useWallet()
+  const { account, connected } = useWalletContext()
   const [circleData, setCircleData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [members, setMembers] = useState([])
@@ -78,7 +78,7 @@ function Dashboard() {
     }, 800)
   }, [selectedCircle])
 
-  if (!isConnected) {
+  if (!connected) {
     return (
       <div className="min-h-screen pt-24 px-4 bg-black">
         <div className="max-w-4xl mx-auto">

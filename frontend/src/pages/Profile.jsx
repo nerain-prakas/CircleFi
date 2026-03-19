@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { useWallet } from '../hooks/useWallet'
+import { useWalletContext } from '../context/WalletContext'
 import ReputationRing from '../components/ReputationRing'
 
 function Profile() {
-  const { address, isConnected } = useWallet()
+  const { account, connected } = useWalletContext()
   const [userProfile, setUserProfile] = useState({
-    address: address,
+    address: account,
     reputation: 82,
     totalCircles: 3,
     totalDividends: 24.5,
@@ -48,7 +48,7 @@ function Profile() {
     ],
   })
 
-  if (!isConnected) {
+  if (!connected) {
     return (
       <div className="min-h-screen pt-24 px-4 bg-black">
         <div className="max-w-4xl mx-auto">
@@ -72,7 +72,7 @@ function Profile() {
 
         {/* Top Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard label="Wallet Address" value={`${address?.substring(0, 10)}...${address?.substring(address.length - 8)}`} icon="👛" />
+          <StatCard label="Wallet Address" value={`${account?.substring(0, 10)}...${account?.substring(account.length - 8)}`} icon="👛" />
           <StatCard label="Total Dividends" value={`${userProfile.totalDividends}`} unit="HBAR" icon="💰" />
           <StatCard label="Active Circles" value={userProfile.totalCircles} icon="⭕" />
           <StatCard label="NFT Badges" value={userProfile.nftBadges.length} icon="🏆" />

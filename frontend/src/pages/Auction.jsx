@@ -1,10 +1,10 @@
 import { useState, useRef } from 'react'
-import { useWallet } from '../hooks/useWallet'
+import { useWalletContext } from '../context/WalletContext'
 import CountdownTimer from '../components/CountdownTimer'
 import { encryptBid, decryptBid } from '../utils/encryption'
 
 function Auction() {
-  const { address, isConnected } = useWallet()
+  const { account, connected } = useWalletContext()
   const [bidAmount, setBidAmount] = useState('')
   const [encryptionKey, setEncryptionKey] = useState(null)
   const [encryptedBid, setEncryptedBid] = useState(null)
@@ -15,7 +15,7 @@ function Auction() {
   const [loading, setLoading] = useState(false)
   const fileInputRef = useRef(null)
 
-  if (!isConnected) {
+  if (!connected) {
     return (
       <div className="min-h-screen pt-24 px-4 bg-black">
         <div className="max-w-4xl mx-auto">

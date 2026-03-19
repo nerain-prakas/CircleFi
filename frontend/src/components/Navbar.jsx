@@ -1,10 +1,12 @@
 import { useNavigate } from 'react-router-dom'
 import { useWallet } from '../hooks/useWallet'
+import { useWalletContext } from '../context/WalletContext'
 import WalletConnect from './WalletConnect'
 
 function Navbar() {
   const navigate = useNavigate()
-  const { address, isConnected, disconnect } = useWallet()
+  const { disconnect } = useWallet()
+  const { account, connected } = useWalletContext()
 
   return (
     <nav className="fixed top-0 left-0 right-0 bg-black bg-opacity-80 backdrop-blur-md border-b border-cyan-400 border-opacity-20 z-50">
@@ -31,12 +33,12 @@ function Navbar() {
 
           {/* Wallet Connection */}
           <div className="flex items-center space-x-4">
-            {isConnected ? (
+            {connected ? (
               <div className="flex items-center space-x-3">
                 <div className="hidden sm:flex items-center space-x-2">
                   <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                   <span className="text-sm font-mono text-gray-300 truncate max-w-xs">
-                    {address?.substring(0, 10)}...{address?.substring(address.length - 8)}
+                    {account?.substring(0, 10)}...{account?.substring(account.length - 8)}
                   </span>
                 </div>
                 <button

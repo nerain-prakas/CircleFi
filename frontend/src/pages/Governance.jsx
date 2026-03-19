@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { useWallet } from '../hooks/useWallet'
+import { useWalletContext } from '../context/WalletContext'
 import CountdownTimer from '../components/CountdownTimer'
 
 function Governance() {
-  const { address, isConnected } = useWallet()
+  const { account, connected } = useWalletContext()
   const [proposals, setProposals] = useState([
     {
       id: 1,
@@ -42,7 +42,7 @@ function Governance() {
   const [showProposalForm, setShowProposalForm] = useState(false)
   const [newProposal, setNewProposal] = useState({ title: '', description: '' })
 
-  if (!isConnected) {
+  if (!connected) {
     return (
       <div className="min-h-screen pt-24 px-4 bg-black">
         <div className="max-w-4xl mx-auto">

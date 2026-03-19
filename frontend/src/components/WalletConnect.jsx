@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { useWallet } from '../hooks/useWallet'
 
 function WalletConnect() {
-  const { connect, isConnecting, error } = useWallet()
+  const { connect, isConnecting, isConnected, error } = useWallet()
   const [showError, setShowError] = useState(false)
 
   useEffect(() => {
@@ -26,7 +26,7 @@ function WalletConnect() {
     <div className="relative">
       <button
         onClick={() => handleConnect('hashpack')}
-        disabled={isConnecting}
+        disabled={isConnecting || isConnected}
         className="px-6 py-2 bg-cyan-400 text-black font-semibold rounded-lg 
                    hover:bg-cyan-300 transition-all duration-200 disabled:opacity-50 
                    disabled:cursor-not-allowed inline-flex items-center space-x-2"
@@ -35,6 +35,17 @@ function WalletConnect() {
           <>
             <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
             <span>Connecting...</span>
+          </>
+        ) : isConnected ? (
+          <>
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fillRule="evenodd"
+                d="M16.707 5.293a1 1 0 010 1.414l-7.5 7.5a1 1 0 01-1.414 0l-3.5-3.5a1 1 0 011.414-1.414L8.5 12.086l6.793-6.793a1 1 0 011.414 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>Connected</span>
           </>
         ) : (
           <>
