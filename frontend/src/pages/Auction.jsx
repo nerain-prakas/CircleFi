@@ -1,10 +1,19 @@
-import { useState, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { keccak256, solidityPacked, formatEther, parseEther } from 'ethers'
 import { useWalletContext } from '../context/WalletContext'
 import CountdownTimer from '../components/CountdownTimer'
 import { encryptBid, decryptBid } from '../utils/encryption'
+import useContract from '../hooks/useContract'
+import { HCS_TOPIC_ID } from '../utils/constants'
 
 function Auction() {
   const { account, connected } = useWalletContext()
+  const {
+    getProvider,
+    initializeContract,
+    fetchContractData,
+    submitBid,
+  } = useContract()
   const [bidAmount, setBidAmount] = useState('')
   const [encryptionKey, setEncryptionKey] = useState(null)
   const [encryptedBid, setEncryptedBid] = useState(null)
@@ -12,8 +21,68 @@ function Auction() {
   const [submitted, setSubmitted] = useState(false)
   const [bidHistory, setBidHistory] = useState([])
   const [auctionPhase, setAuctionPhase] = useState('SEALED')
-  const [loading, setLoading] = useState(false)
-  const fileInputRef = useRef(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [groups, setGroups] = useState([])
+  const [selectedGroupId, setSelectedGroupId] = useState(null)
+  const [potSize, setPotSize] = useState('0')
+  const [lastUpdated, setLastUpdated] = useState(null)
+  const [errorMessage, setErrorMessage] = useState(null)
+  const refreshAuctionData = useCallback(async () => {
+    if (!connected || !account) {
+      setGroups([])
+      setSelectedGroupId(null)
+      setPotSize('0')
+      return
+    }
+
+    setRefreshing(true)
+    setErrorMessage(null)
+    try {
+      const provider = getProvider()
+      const myGroups = await fetchContractData(async (activeContract) => {
+        const total = Number(await activeContract.groupCounter())
+        const fetchedGroups = []
+
+        for (let i = 0; i < total; i += 1) {
+          const members = await activeContract.getMembers(i)
+          const isMember = members.some(
+            (member) => member.toLowerCase() === account.toLowerCase()
+          )
+
+          if (isMember) {
+            const pot = await activeContract.getCurrentPot(i)
+            fetchedGroups.push({ id: i, pot: pot?.toString?.() ?? '0' })
+          }
+        }
+
+        return fetchedGroups
+      }, provider)
+
+      setGroups(myGroups)
+      setSelectedGroupId((currentValue) => {
+        const nextSelectedGroupId = myGroups.some((group) => group.id === currentValue)
+          ? currentValue
+          : (myGroups[0]?.id ?? null)
+        const selectedGroup = myGroups.find((group) => group.id === nextSelectedGroupId)
+        setPotSize(selectedGroup?.pot ?? '0')
+        return nextSelectedGroupId
+      })
+      setLastUpdated(new Date())
+    } catch (err) {
+      setErrorMessage(err.message || 'Failed to load groups')
+    } finally {
+      setRefreshing(false)
+    }
+  }, [connected, account, getProvider, fetchContractData])
+
+  useEffect(() => {
+    refreshAuctionData()
+  }, [refreshAuctionData])
+
+  useEffect(() => {
+    const selectedGroup = groups.find((group) => group.id === selectedGroupId)
+    setPotSize(selectedGroup?.pot ?? '0')
+  }, [selectedGroupId, groups])
 
   if (!connected) {
     return (
@@ -53,16 +122,34 @@ function Auction() {
       return
     }
 
-    setSubmitting(true)
-    try {
-      // Simulate HCS submission
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+    if (selectedGroupId === null) {
+      alert('Select a circle before submitting a bid')
+      return
+    }
 
-      // Mock: add to bid history
+    setSubmitting(true)
+    setErrorMessage(null)
+    try {
+      const amount = parseEther(bidAmount)
+      const saltBytes = new Uint8Array(32)
+      crypto.getRandomValues(saltBytes)
+      const salt = `0x${Array.from(saltBytes).map((b) => b.toString(16).padStart(2, '0')).join('')}`
+      const sealedBidHash = keccak256(
+        solidityPacked(['uint256', 'bytes32'], [amount, salt])
+      )
+
+      const provider = getProvider()
+      await initializeContract(provider)
+      await submitBid(selectedGroupId, sealedBidHash)
+
+      if (!HCS_TOPIC_ID) {
+        throw new Error('VITE_HCS_TOPIC_ID is not set for HCS submission')
+      }
+
       setBidHistory([
         {
           id: bidHistory.length + 1,
-          hash: `0x${Math.random().toString(16).slice(2)}`,
+          hash: sealedBidHash,
           amount: bidAmount,
           encrypted: encryptedBid,
           timestamp: new Date(),
@@ -80,7 +167,7 @@ function Auction() {
       // Reset after 3 seconds
       setTimeout(() => setSubmitted(false), 3000)
     } catch (err) {
-      alert('Bid submission failed: ' + err.message)
+      setErrorMessage(err.message || 'Bid submission failed')
     } finally {
       setSubmitting(false)
     }
@@ -102,9 +189,16 @@ function Auction() {
     <div className="min-h-screen pt-24 px-4 pb-12 bg-black">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Sealed Bid Auction</h1>
-          <p className="text-gray-400">Encrypt and submit your bids for this month's pot</p>
+        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-4xl font-bold text-white mb-2">Sealed Bid Auction</h1>
+            <p className="text-gray-400">Encrypt and submit your bids for this month's pot</p>
+          </div>
+          <RefreshControl
+            onRefresh={refreshAuctionData}
+            refreshing={refreshing}
+            lastUpdated={lastUpdated}
+          />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -112,6 +206,12 @@ function Auction() {
           <div className="lg:col-span-1">
             <div className="bg-gradient-to-br from-gray-900 from-opacity-60 to-black to-opacity-40 rounded-lg p-6 border border-gray-700 border-opacity-30 sticky top-24">
               <h2 className="text-2xl font-bold text-white mb-6">Submit Bid</h2>
+
+              {errorMessage && (
+                <div className="mb-6 p-4 bg-red-900 bg-opacity-20 border border-red-600 border-opacity-30 rounded-lg text-red-200">
+                  {errorMessage}
+                </div>
+              )}
 
               {/* Success Message */}
               {submitted && (
@@ -130,6 +230,25 @@ function Auction() {
               )}
 
               <div className="space-y-4">
+                {/* Circle Selector */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Circle
+                  </label>
+                  <select
+                    value={selectedGroupId ?? ''}
+                    onChange={(event) => setSelectedGroupId(Number(event.target.value))}
+                    className="w-full px-4 py-2 bg-gray-800 text-white rounded-lg border border-gray-700 hover:border-cyan-400 focus:border-cyan-400 focus:outline-none transition-colors"
+                  >
+                    {groups.length === 0 && <option value="">No circles</option>}
+                    {groups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        Circle #{group.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Bid Amount Input */}
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -217,8 +336,8 @@ function Auction() {
                 {/* Info Box */}
                 <div className="p-4 bg-blue-900 bg-opacity-20 border border-blue-600 border-opacity-30 rounded-lg">
                   <p className="text-xs text-blue-300 leading-relaxed">
-                    <strong>How it works:</strong> Your bid is encrypted with a key only you know. 
-                    Submit the encrypted bid to HCS. During reveal phase, decrypt it with your key. 
+                    <strong>How it works:</strong> Your bid is encrypted with a key only you know.
+                    Submit the encrypted bid to HCS. During reveal phase, decrypt it with your key.
                     Lowest valid bid wins the pot.
                   </p>
                 </div>
@@ -253,7 +372,9 @@ function Auction() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <p className="text-gray-400 mb-1">Current Pot</p>
-                      <p className="text-2xl font-bold text-cyan-400">12.5 HBAR</p>
+                      <p className="text-2xl font-bold text-cyan-400">
+                        {formatEther(potSize || '0')} HBAR
+                      </p>
                     </div>
                     <div>
                       <p className="text-gray-400 mb-1">Number of Bids</p>
@@ -323,6 +444,31 @@ function Auction() {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function RefreshControl({ onRefresh, refreshing, lastUpdated }) {
+  return (
+    <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={refreshing}
+        className="inline-flex items-center gap-2 px-4 py-2 border border-cyan-400 text-cyan-300 rounded-lg font-semibold hover:bg-cyan-900 hover:bg-opacity-30 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        {refreshing ? (
+          <div className="w-4 h-4 border-2 border-cyan-300 border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path d="M4 4v5h.582A6.5 6.5 0 1110.5 16a6.47 6.47 0 01-4.594-1.905l-1.06 1.06A8 8 0 1010.5 2c-2.206 0-4.204.893-5.651 2.336V4H4z" />
+          </svg>
+        )}
+        <span>Refresh</span>
+      </button>
+      <span className="text-xs text-gray-400">
+        Last updated: {lastUpdated ? lastUpdated.toLocaleTimeString() : 'Never'}
+      </span>
     </div>
   )
 }

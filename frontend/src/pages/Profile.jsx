@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useWalletContext } from '../context/WalletContext'
 import ReputationRing from '../components/ReputationRing'
+import useContract from '../hooks/useContract'
 
 function Profile() {
   const { account, connected } = useWalletContext()
+  const { getProvider, fetchContractData } = useContract()
   const [userProfile, setUserProfile] = useState({
     address: account,
     reputation: 82,
@@ -47,6 +49,46 @@ function Profile() {
       },
     ],
   })
+  const [refreshing, setRefreshing] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState(null)
+  const [errorMessage, setErrorMessage] = useState(null)
+
+  const refreshProfileData = useCallback(async () => {
+    if (!connected || !account) return
+
+    setRefreshing(true)
+    setErrorMessage(null)
+    try {
+      const provider = getProvider()
+      const snapshot = await fetchContractData(async (activeContract) => {
+        const [reputation, groupCount] = await Promise.all([
+          activeContract.getReputationScore(account),
+          activeContract.groupCounter(),
+        ])
+
+        return {
+          reputation: Number(reputation ?? 0),
+          totalCircles: Number(groupCount ?? 0),
+        }
+      }, provider)
+
+      setUserProfile((currentProfile) => ({
+        ...currentProfile,
+        address: account,
+        reputation: snapshot.reputation,
+        totalCircles: snapshot.totalCircles,
+      }))
+      setLastUpdated(new Date())
+    } catch (err) {
+      setErrorMessage(err.message || 'Failed to refresh profile data')
+    } finally {
+      setRefreshing(false)
+    }
+  }, [connected, account, getProvider, fetchContractData])
+
+  useEffect(() => {
+    refreshProfileData()
+  }, [refreshProfileData])
 
   if (!connected) {
     return (
@@ -65,10 +107,23 @@ function Profile() {
     <div className="min-h-screen pt-24 px-4 pb-12 bg-black">
       <div className="max-w-6xl mx-auto">
         {/* Profile Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Profile</h1>
-          <p className="text-gray-400">Manage your CircleFi account and memberships</p>
+        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-4xl font-bold text-white mb-2">Profile</h1>
+            <p className="text-gray-400">Manage your CircleFi account and memberships</p>
+          </div>
+          <RefreshControl
+            onRefresh={refreshProfileData}
+            refreshing={refreshing}
+            lastUpdated={lastUpdated}
+          />
         </div>
+
+        {errorMessage && (
+          <div className="mb-6 p-4 bg-red-900 bg-opacity-20 border border-red-700 rounded-lg text-red-200">
+            {errorMessage}
+          </div>
+        )}
 
         {/* Top Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -319,6 +374,31 @@ function StatRow({ label, value, highlight = false }) {
       <span className="text-gray-400">{label}</span>
       <span className={`font-semibold ${highlight ? 'text-cyan-400' : 'text-white'}`}>
         {value}
+      </span>
+    </div>
+  )
+}
+
+function RefreshControl({ onRefresh, refreshing, lastUpdated }) {
+  return (
+    <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={refreshing}
+        className="inline-flex items-center gap-2 px-4 py-2 border border-cyan-400 text-cyan-300 rounded-lg font-semibold hover:bg-cyan-900 hover:bg-opacity-30 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        {refreshing ? (
+          <div className="w-4 h-4 border-2 border-cyan-300 border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path d="M4 4v5h.582A6.5 6.5 0 1110.5 16a6.47 6.47 0 01-4.594-1.905l-1.06 1.06A8 8 0 1010.5 2c-2.206 0-4.204.893-5.651 2.336V4H4z" />
+          </svg>
+        )}
+        <span>Refresh</span>
+      </button>
+      <span className="text-xs text-gray-400">
+        Last updated: {lastUpdated ? lastUpdated.toLocaleTimeString() : 'Never'}
       </span>
     </div>
   )

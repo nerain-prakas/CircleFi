@@ -14,7 +14,7 @@ module.exports = {
       ],
       chainId: 296, // Hedera Testnet chain ID
       gas: 300000,
-      gasPrice: 930000000000, // Hedera testnet minimum gas price in wei
+      gasPrice: 960000000000, // Hedera testnet minimum gas price in wei
     },
   },
   

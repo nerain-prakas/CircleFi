@@ -26,6 +26,7 @@ function Navbar() {
           {/* Navigation Links */}
           <div className="hidden md:flex items-center space-x-8">
             <NavLink label="Dashboard" onClick={() => navigate('/dashboard')} />
+            <NavLink label="Groups" onClick={() => navigate('/groups')} />
             <NavLink label="Auction" onClick={() => navigate('/auction')} />
             <NavLink label="Governance" onClick={() => navigate('/governance')} />
             <NavLink label="Profile" onClick={() => navigate('/profile')} />
@@ -96,6 +97,7 @@ function MobileNavigation() {
     <div className="md:hidden border-t border-gray-700 bg-black bg-opacity-60">
       <div className="px-2 pt-2 pb-3 space-y-1">
         <MobileNavItem label="Dashboard" href="/dashboard" />
+        <MobileNavItem label="Groups" href="/groups" />
         <MobileNavItem label="Auction" href="/auction" />
         <MobileNavItem label="Governance" href="/governance" />
         <MobileNavItem label="Profile" href="/profile" />

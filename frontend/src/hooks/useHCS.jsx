@@ -132,20 +132,24 @@ export function useHCS() {
   }, [])
 
   /**
-   * Watch HCS topic for new messages (polling)
+   * Trigger a one-shot fetch for a topic and return a no-op cleanup function.
    */
-  const watchTopic = useCallback((topicId, callback, interval = 5000) => {
-    const timer = setInterval(async () => {
-      try {
-        const msgs = await getMessages(topicId)
-        callback(msgs)
-      } catch (err) {
-        console.error('Error watching topic:', err)
-      }
-    }, interval)
+  const watchTopic = useCallback((topicId, callback) => {
+    let active = true
 
-    // Return cleanup function
-    return () => clearInterval(timer)
+    getMessages(topicId)
+      .then((msgs) => {
+        if (active) {
+          callback(msgs)
+        }
+      })
+      .catch((err) => {
+        console.error('Error watching topic:', err)
+      })
+
+    return () => {
+      active = false
+    }
   }, [getMessages])
 
   return {

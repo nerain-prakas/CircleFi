@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import Auction from './pages/Auction'
 import Governance from './pages/Governance'
 import Profile from './pages/Profile'
+import Groups from './pages/Groups'
 import { WalletProvider } from './context/WalletContext'
 import './index.css'
 
@@ -32,6 +33,7 @@ function App() {
                   <main className="pt-20">
                     <Routes>
                       <Route path="/dashboard" element={<Dashboard />} />
+                      <Route path="/groups" element={<Groups />} />
                       <Route path="/auction" element={<Auction />} />
                       <Route path="/governance" element={<Governance />} />
                       <Route path="/profile" element={<Profile />} />

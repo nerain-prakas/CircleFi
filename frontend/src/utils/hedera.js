@@ -1,27 +1,12 @@
 /**
- * Hedera SDK Configuration and Helpers
+ * Hedera REST Configuration and Helpers
  */
-
-import { Client, TopicMessageSubmitTransaction, TopicId } from '@hashgraph/sdk'
 
 // Hedera network configuration
 export const HEDERA_NETWORK = import.meta.env.VITE_HEDERA_NETWORK || 'testnet'
 export const HEDERA_ACCOUNT_ID = import.meta.env.VITE_HEDERA_ACCOUNT_ID
 export const MIRROR_NODE_URL = import.meta.env.VITE_MIRROR_NODE_URL || 
   'https://testnet.mirrornode.hedera.com/api/v1'
-
-/**
- * Initialize Hedera client
- */
-export function initializeHederaClient() {
-  if (HEDERA_NETWORK === 'testnet') {
-    return Client.forTestnet()
-  } else if (HEDERA_NETWORK === 'mainnet') {
-    return Client.forMainnet()
-  } else {
-    throw new Error(`Unknown Hedera network: ${HEDERA_NETWORK}`)
-  }
-}
 
 /**
  * Fetch messages from HCS topic via mirror node

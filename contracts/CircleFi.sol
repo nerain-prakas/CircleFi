@@ -14,6 +14,7 @@ contract CircleFi is ReentrancyGuard, Ownable, Pausable {
     // Structs
     struct ChitGroup {
         uint256 groupId;
+        string groupName;
         uint256 memberCount;
         uint256 monthlyContribution;
         uint256 duration; // in months
@@ -41,6 +42,7 @@ contract CircleFi is ReentrancyGuard, Ownable, Pausable {
     // State variables
     mapping(uint256 => ChitGroup) public chitGroups;
     uint256 public groupCounter;
+    uint256 public constant EXIT_PENALTY_BPS = 500; // 5% penalty on exit
     uint256 public constant MIN_REPUTATION_SCORE = 50; // Minimum score to join
     uint256 public constant AUCTION_DEADLINE = 24 hours; // 24 hours for bid revelation
     
@@ -86,6 +88,7 @@ contract CircleFi is ReentrancyGuard, Ownable, Pausable {
         
         ChitGroup storage newGroup = chitGroups[groupId];
         newGroup.groupId = groupId;
+        newGroup.groupName = "";
         newGroup.memberCount = _memberCount;
         newGroup.monthlyContribution = _monthlyContribution;
         newGroup.duration = _duration;
@@ -114,6 +117,42 @@ contract CircleFi is ReentrancyGuard, Ownable, Pausable {
         group.hasJoined[msg.sender] = true;
         
         emit MemberJoined(_groupId, msg.sender);
+    }
+
+    /**
+     * @notice Allows a member to exit a chit group with a penalty
+     * @param _groupId ID of the chit group to exit
+     */
+    function exitGroup(uint256 _groupId) external whenNotPaused nonReentrant {
+        ChitGroup storage group = chitGroups[_groupId];
+        require(group.isActive, "Group is not active");
+        require(group.hasJoined[msg.sender], "Not a member of this group");
+
+        // Remove member from list
+        for (uint256 i = 0; i < group.members.length; i++) {
+            if (group.members[i] == msg.sender) {
+                group.members[i] = group.members[group.members.length - 1];
+                group.members.pop();
+                break;
+            }
+        }
+
+        group.hasJoined[msg.sender] = false;
+
+        uint256 contributed = group.contributions[msg.sender];
+        if (contributed > 0) {
+            uint256 penalty = (contributed * EXIT_PENALTY_BPS) / 10000;
+            uint256 refund = contributed - penalty;
+            group.contributions[msg.sender] = 0;
+
+            if (refund > 0) {
+                require(group.totalPot >= refund, "Insufficient pot balance");
+                group.totalPot -= refund;
+
+                (bool success, ) = payable(msg.sender).call{value: refund}("");
+                require(success, "Refund failed");
+            }
+        }
     }
 
     /**
@@ -336,5 +375,14 @@ contract CircleFi is ReentrancyGuard, Ownable, Pausable {
      */
     function getCurrentMonth(uint256 _groupId) external view returns (uint256) {
         return chitGroups[_groupId].currentMonth;
+    }
+
+    /**
+     * @notice Get name of a group
+     * @param _groupId ID of the chit group
+     * @return Group name
+     */
+    function getName(uint256 _groupId) external view returns (string memory) {
+        return chitGroups[_groupId].groupName;
     }
 }

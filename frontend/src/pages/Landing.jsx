@@ -1,5 +1,4 @@
-import React from 'react'
-import { useState } from 'react'
+import React, { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ThreeBackground from '../components/ThreeBackground'
 import WalletConnect from '../components/WalletConnect'
@@ -8,20 +7,12 @@ import { useWallet } from '../hooks/useWallet'
 function Landing() {
   const navigate = useNavigate()
   const { isConnected } = useWallet()
-  const [scrolling, setScrolling] = useState(false)
 
-  const handleWalletConnect = () => {
-    // After wallet connects, navigate to dashboard (handled by useWallet hook)
-    // Watch for isConnected change
+  useEffect(() => {
     if (isConnected) {
       navigate('/dashboard')
     }
-  }
-
-  // Monitor isConnected changes
-  if (isConnected && !scrolling) {
-    navigate('/dashboard')
-  }
+  }, [isConnected, navigate])
 
   return (
     <div className="relative w-full min-h-screen bg-black overflow-hidden">

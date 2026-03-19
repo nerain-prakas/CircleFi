@@ -3,53 +3,106 @@
  */
 
 // CircleFi Contract Address
-export const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || '0.0.0'
+export const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS
 
 // CircleFi Contract ABI
 export const CIRCLEFI_ABI = [
   {
-    "inputs": [],
-    "name": "createCircle",
-    "outputs": [{ "type": "uint256", "name": "circleId" }],
+    "inputs": [
+      { "type": "uint256", "name": "_memberCount" },
+      { "type": "uint256", "name": "_monthlyContribution" },
+      { "type": "uint256", "name": "_duration" },
+    ],
+    "name": "createChitGroup",
+    "outputs": [{ "type": "uint256", "name": "" }],
     "stateMutability": "nonpayable",
     "type": "function",
   },
   {
-    "inputs": [{ "type": "uint256", "name": "circleId" }],
-    "name": "contributeToCircle",
+    "inputs": [{ "type": "uint256", "name": "_groupId" }],
+    "name": "joinChitGroup",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function",
+  },
+  {
+    "inputs": [{ "type": "uint256", "name": "_groupId" }],
+    "name": "exitGroup",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function",
+  },
+  {
+    "inputs": [{ "type": "uint256", "name": "_groupId" }],
+    "name": "contribute",
     "outputs": [],
     "stateMutability": "payable",
     "type": "function",
   },
   {
-    "inputs": [{ "type": "uint256", "name": "circleId" }, { "type": "uint256", "name": "bidAmount" }],
+    "inputs": [
+      { "type": "uint256", "name": "_groupId" },
+      { "type": "bytes32", "name": "_sealedBidHash" },
+    ],
     "name": "submitBid",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function",
   },
   {
-    "inputs": [{ "type": "uint256", "name": "circleId" }],
-    "name": "revealBids",
-    "outputs": [{ "type": "address", "name": "winner" }],
-    "stateMutability": "nonpayable",
-    "type": "function",
-  },
-  {
-    "inputs": [{ "type": "address", "name": "member" }],
+    "inputs": [{ "type": "address", "name": "_member" }],
     "name": "getReputationScore",
-    "outputs": [{ "type": "uint256", "name": "score" }],
+    "outputs": [{ "type": "uint256", "name": "" }],
     "stateMutability": "view",
     "type": "function",
   },
   {
-    "inputs": [{ "type": "uint256", "name": "circleId" }],
-    "name": "getCircleDetails",
+    "inputs": [{ "type": "uint256", "name": "_groupId" }],
+    "name": "getCurrentPot",
+    "outputs": [{ "type": "uint256", "name": "" }],
+    "stateMutability": "view",
+    "type": "function",
+  },
+  {
+    "inputs": [{ "type": "uint256", "name": "_groupId" }],
+    "name": "getMembers",
+    "outputs": [{ "type": "address[]", "name": "" }],
+    "stateMutability": "view",
+    "type": "function",
+  },
+  {
+    "inputs": [{ "type": "uint256", "name": "_groupId" }],
+    "name": "getCurrentMonth",
+    "outputs": [{ "type": "uint256", "name": "" }],
+    "stateMutability": "view",
+    "type": "function",
+  },
+  {
+    "inputs": [{ "type": "uint256", "name": "_groupId" }],
+    "name": "getName",
+    "outputs": [{ "type": "string", "name": "" }],
+    "stateMutability": "view",
+    "type": "function",
+  },
+  {
+    "inputs": [],
+    "name": "groupCounter",
+    "outputs": [{ "type": "uint256", "name": "" }],
+    "stateMutability": "view",
+    "type": "function",
+  },
+  {
+    "inputs": [{ "type": "uint256", "name": "" }],
+    "name": "chitGroups",
     "outputs": [
-      { "type": "uint256", "name": "potSize" },
+      { "type": "uint256", "name": "groupId" },
       { "type": "uint256", "name": "memberCount" },
+      { "type": "uint256", "name": "monthlyContribution" },
+      { "type": "uint256", "name": "duration" },
+      { "type": "uint256", "name": "totalPot" },
       { "type": "uint256", "name": "currentMonth" },
-      { "type": "address[]", "name": "members" },
+      { "type": "bool", "name": "isActive" },
+      { "type": "address", "name": "admin" },
     ],
     "stateMutability": "view",
     "type": "function",
@@ -57,7 +110,7 @@ export const CIRCLEFI_ABI = [
 ]
 
 // HCS Topic ID for Sealed Bids
-export const HCS_TOPIC_ID = import.meta.env.VITE_HCS_TOPIC_ID || '0.0.0'
+export const HCS_TOPIC_ID = import.meta.env.VITE_HCS_TOPIC_ID
 
 // Network Configuration
 export const NETWORKS = {

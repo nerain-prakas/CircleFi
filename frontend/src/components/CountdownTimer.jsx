@@ -10,7 +10,7 @@ function CountdownTimer({ endDate, onComplete }) {
   const [isComplete, setIsComplete] = useState(false)
 
   useEffect(() => {
-    const timer = setInterval(() => {
+    const tick = () => {
       const now = new Date().getTime()
       const target = new Date(endDate).getTime()
       const distance = target - now
@@ -19,7 +19,6 @@ function CountdownTimer({ endDate, onComplete }) {
         setIsComplete(true)
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 })
         onComplete?.()
-        clearInterval(timer)
       } else {
         const days = Math.floor(distance / (1000 * 60 * 60 * 24))
         const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
@@ -27,10 +26,13 @@ function CountdownTimer({ endDate, onComplete }) {
         const seconds = Math.floor((distance % (1000 * 60)) / 1000)
 
         setTimeLeft({ days, hours, minutes, seconds })
+        timer = setTimeout(tick, 1000)
       }
-    }, 1000)
+    }
 
-    return () => clearInterval(timer)
+    let timer = setTimeout(tick, 0)
+
+    return () => clearTimeout(timer)
   }, [endDate, onComplete])
 
   if (isComplete) {

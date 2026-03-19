@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useWalletContext } from '../context/WalletContext'
 import CountdownTimer from '../components/CountdownTimer'
+import useContract from '../hooks/useContract'
 
 function Governance() {
   const { account, connected } = useWalletContext()
+  const { getProvider, fetchContractData } = useContract()
   const [proposals, setProposals] = useState([
     {
       id: 1,
@@ -41,6 +43,42 @@ function Governance() {
   ])
   const [showProposalForm, setShowProposalForm] = useState(false)
   const [newProposal, setNewProposal] = useState({ title: '', description: '' })
+  const [refreshing, setRefreshing] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState(null)
+  const [errorMessage, setErrorMessage] = useState(null)
+  const [chainSnapshot, setChainSnapshot] = useState({ groupCount: 0, reputation: '0' })
+
+  const refreshGovernanceData = useCallback(async () => {
+    if (!connected || !account) return
+
+    setRefreshing(true)
+    setErrorMessage(null)
+    try {
+      const provider = getProvider()
+      const snapshot = await fetchContractData(async (activeContract) => {
+        const [groupCount, reputation] = await Promise.all([
+          activeContract.groupCounter(),
+          activeContract.getReputationScore(account),
+        ])
+
+        return {
+          groupCount: Number(groupCount ?? 0),
+          reputation: reputation?.toString?.() ?? '0',
+        }
+      }, provider)
+
+      setChainSnapshot(snapshot)
+      setLastUpdated(new Date())
+    } catch (err) {
+      setErrorMessage(err.message || 'Failed to refresh governance data')
+    } finally {
+      setRefreshing(false)
+    }
+  }, [connected, account, getProvider, fetchContractData])
+
+  useEffect(() => {
+    refreshGovernanceData()
+  }, [refreshGovernanceData])
 
   if (!connected) {
     return (
@@ -103,21 +141,34 @@ function Governance() {
     <div className="min-h-screen pt-24 px-4 pb-12 bg-black">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-4xl font-bold text-white mb-2">Governance</h1>
             <p className="text-gray-400">Vote on proposals and shape the future of CircleFi</p>
           </div>
-          <button
-            onClick={() => setShowProposalForm(!showProposalForm)}
-            className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-purple-500 text-white rounded-lg font-semibold hover:from-cyan-600 hover:to-purple-600 transition-all"
-          >
-            + New Proposal
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <RefreshControl
+              onRefresh={refreshGovernanceData}
+              refreshing={refreshing}
+              lastUpdated={lastUpdated}
+            />
+            <button
+              onClick={() => setShowProposalForm(!showProposalForm)}
+              className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-purple-500 text-white rounded-lg font-semibold hover:from-cyan-600 hover:to-purple-600 transition-all"
+            >
+              + New Proposal
+            </button>
+          </div>
         </div>
 
+        {errorMessage && (
+          <div className="mb-6 p-4 bg-red-900 bg-opacity-20 border border-red-700 rounded-lg text-red-200">
+            {errorMessage}
+          </div>
+        )}
+
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
           <VoteStatCard label="Total Yes Votes" value={totalYesVotes} color="green" icon="👍" />
           <VoteStatCard label="Total No Votes" value={totalNoVotes} color="red" icon="👎" />
           <VoteStatCard
@@ -125,6 +176,18 @@ function Governance() {
             value={proposals.filter((p) => p.status === 'ACTIVE').length}
             color="blue"
             icon="⚡"
+          />
+          <VoteStatCard
+            label="On-chain Groups"
+            value={chainSnapshot.groupCount}
+            color="blue"
+            icon="⛓"
+          />
+          <VoteStatCard
+            label="My Reputation"
+            value={chainSnapshot.reputation}
+            color="green"
+            icon="🛡"
           />
         </div>
 
@@ -323,6 +386,31 @@ function VoteStatCard({ label, value, color, icon }) {
         </div>
         <div className="text-4xl">{icon}</div>
       </div>
+    </div>
+  )
+}
+
+function RefreshControl({ onRefresh, refreshing, lastUpdated }) {
+  return (
+    <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={refreshing}
+        className="inline-flex items-center gap-2 px-4 py-2 border border-cyan-400 text-cyan-300 rounded-lg font-semibold hover:bg-cyan-900 hover:bg-opacity-30 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        {refreshing ? (
+          <div className="w-4 h-4 border-2 border-cyan-300 border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path d="M4 4v5h.582A6.5 6.5 0 1110.5 16a6.47 6.47 0 01-4.594-1.905l-1.06 1.06A8 8 0 1010.5 2c-2.206 0-4.204.893-5.651 2.336V4H4z" />
+          </svg>
+        )}
+        <span>Refresh</span>
+      </button>
+      <span className="text-xs text-gray-400">
+        Last updated: {lastUpdated ? lastUpdated.toLocaleTimeString() : 'Never'}
+      </span>
     </div>
   )
 }

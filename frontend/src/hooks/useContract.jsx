@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Contract, JsonRpcProvider, Signer } from 'ethers'
+import { BrowserProvider, Contract, JsonRpcProvider, parseEther } from 'ethers'
 import { CONTRACT_ADDRESS, CIRCLEFI_ABI, RPC_URL } from '../utils/constants'
 
 /**
@@ -11,25 +11,58 @@ export function useContract() {
   const [error, setError] = useState(null)
 
   /**
+   * Get provider instance
+   */
+  const getProvider = useCallback(() => {
+    return new JsonRpcProvider(RPC_URL)
+  }, [])
+
+  const getWalletProvider = useCallback(async () => {
+    if (!window?.ethereum) {
+      return null
+    }
+
+    const walletProvider = new BrowserProvider(window.ethereum)
+    const accounts = await walletProvider.listAccounts()
+
+    if (!accounts.length) {
+      await window.ethereum.request({ method: 'eth_requestAccounts' })
+    }
+
+    return walletProvider
+  }, [])
+
+  /**
    * Initialize contract instance with signer
    */
   const initializeContract = useCallback(async (provider) => {
     try {
-      setLoading(true)
       setError(null)
 
-      if (!provider) {
+      const address = CONTRACT_ADDRESS || import.meta.env.VITE_CONTRACT_ADDRESS
+      if (!address) {
+        throw new Error('Contract address is missing. Set VITE_CONTRACT_ADDRESS and restart the frontend.')
+      }
+
+      let activeProvider = provider
+      if (!activeProvider) {
+        // Prefer a connected wallet provider when one is available.
+        activeProvider = await getWalletProvider()
+      }
+
+      if (!activeProvider) {
+        activeProvider = getProvider()
+      }
+
+      if (!activeProvider) {
         throw new Error('Provider not available')
       }
 
-      // Get signer from provider
-      const signer = await provider.getSigner?.()
-
       // Create contract instance
       const contractInstance = new Contract(
-        CONTRACT_ADDRESS,
+        address,
         CIRCLEFI_ABI,
-        signer || provider
+        activeProvider
       )
 
       setContract(contractInstance)
@@ -38,73 +71,65 @@ export function useContract() {
       console.error('Contract initialization error:', err)
       setError(err.message)
       throw err
-    } finally {
-      setLoading(false)
     }
-  }, [])
+  }, [getProvider, getWalletProvider])
 
   /**
-   * Get provider instance
+   * Fetch contract data only when called explicitly.
    */
-  const getProvider = useCallback(() => {
-    return new JsonRpcProvider(RPC_URL)
-  }, [])
+  const fetchContractData = useCallback(
+    async (fetcher, provider) => {
+      try {
+        console.log('Fetching with contract:', import.meta.env.VITE_CONTRACT_ADDRESS)
+        setLoading(true)
+        setError(null)
+
+        const activeProvider = provider || getProvider()
+        const activeContract = await initializeContract(activeProvider)
+        return await fetcher(activeContract)
+      } catch (err) {
+        console.error('Contract data fetch error:', err)
+        setError(err.message)
+        throw err
+      } finally {
+        setLoading(false)
+      }
+    },
+    [getProvider, initializeContract]
+  )
 
   /**
    * Call contract function (read-only)
    */
-  const callFunction = useCallback(
-    async (functionName, args = []) => {
-      if (!contract) {
-        throw new Error('Contract not initialized')
-      }
-
-      try {
-        setLoading(true)
-        setError(null)
-
-        const result = await contract[functionName](...args)
-        return result
-      } catch (err) {
-        console.error(`Contract call error (${functionName}):`, err)
-        setError(err.message)
-        throw err
-      } finally {
-        setLoading(false)
-      }
-    },
-    [contract]
-  )
+  const callFunction = useCallback(async (functionName, args = []) => {
+    const provider = contract?.runner ?? getProvider()
+    return fetchContractData(
+      async (activeContract) => activeContract[functionName](...args),
+      provider
+    )
+  }, [contract, fetchContractData, getProvider])
 
   /**
    * Execute contract function (state-changing)
    */
-  const executeFunction = useCallback(
-    async (functionName, args = [], options = {}) => {
-      if (!contract) {
-        throw new Error('Contract not initialized')
-      }
+  const executeFunction = useCallback(async (functionName, args = [], options = {}) => {
+    try {
+      setLoading(true)
+      setError(null)
 
-      try {
-        setLoading(true)
-        setError(null)
+      const activeContract = contract || (await initializeContract(getProvider()))
 
-        const tx = await contract[functionName](...args, options)
-
-        // Wait for transaction confirmation
-        const receipt = await tx.wait()
-
-        return receipt
-      } catch (err) {
-        console.error(`Contract execution error (${functionName}):`, err)
-        setError(err.message)
-        throw err
-      } finally {
-        setLoading(false)
-      }
-    },
-    [contract]
-  )
+      const tx = await activeContract[functionName](...args, options)
+      const receipt = await tx.wait()
+      return receipt
+    } catch (err) {
+      console.error(`Contract execution error (${functionName}):`, err)
+      setError(err.message)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }, [contract, getProvider, initializeContract])
 
   /**
    * Get reputation score for an address
@@ -119,44 +144,53 @@ export function useContract() {
   /**
    * Get circle details
    */
-  const getCircleDetails = useCallback(
-    async (circleId) => {
-      return callFunction('getCircleDetails', [circleId])
-    },
-    [callFunction]
-  )
+  const getGroupCount = useCallback(async () => {
+    return callFunction('groupCounter')
+  }, [callFunction])
 
   /**
    * Submit bid to circle
    */
-  const submitBid = useCallback(
-    async (circleId, bidAmount) => {
-      return executeFunction('submitBid', [circleId, bidAmount])
-    },
-    [executeFunction]
-  )
+  const getGroupSummary = useCallback(async (groupId) => {
+    return callFunction('chitGroups', [groupId])
+  }, [callFunction])
 
   /**
    * Contribute to circle
    */
-  const contributeToCircle = useCallback(
-    async (circleId, amount) => {
-      return executeFunction('contributeToCircle', [circleId], {
-        value: amount,
-      })
-    },
-    [executeFunction]
-  )
+  const getGroupMembers = useCallback(async (groupId) => {
+    return callFunction('getMembers', [groupId])
+  }, [callFunction])
 
   /**
    * Create a new circle
    */
-  const createCircle = useCallback(
-    async (name, monthlyContribution, duration) => {
-      return executeFunction('createCircle', [name, monthlyContribution, duration])
-    },
-    [executeFunction]
-  )
+  const getCurrentPot = useCallback(async (groupId) => {
+    return callFunction('getCurrentPot', [groupId])
+  }, [callFunction])
+
+  const createGroup = useCallback(async (memberCount, monthlyContribution, duration) => {
+    const contributionWei = parseEther(monthlyContribution)
+    return executeFunction('createChitGroup', [memberCount, contributionWei, duration])
+  }, [executeFunction])
+
+  const joinGroup = useCallback(async (groupId) => {
+    return executeFunction('joinChitGroup', [groupId])
+  }, [executeFunction])
+
+  const contribute = useCallback(async (groupId, amountHbar) => {
+    return executeFunction('contribute', [groupId], {
+      value: parseEther(amountHbar),
+    })
+  }, [executeFunction])
+
+  const submitBid = useCallback(async (groupId, sealedBidHash) => {
+    return executeFunction('submitBid', [groupId, sealedBidHash])
+  }, [executeFunction])
+
+  const exitGroup = useCallback(async () => {
+    throw new Error('exitGroup is not available in the current contract')
+  }, [])
 
   return {
     contract,
@@ -164,13 +198,19 @@ export function useContract() {
     error,
     initializeContract,
     getProvider,
+    fetchContractData,
     callFunction,
     executeFunction,
     getReputationScore,
-    getCircleDetails,
+    getGroupCount,
+    getGroupSummary,
+    getGroupMembers,
+    getCurrentPot,
     submitBid,
-    contributeToCircle,
-    createCircle,
+    contribute,
+    createGroup,
+    joinGroup,
+    exitGroup,
   }
 }
 

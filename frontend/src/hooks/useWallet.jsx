@@ -1,19 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { DAppConnector } from '@hashgraph/hedera-wallet-connect'
-import { LedgerId } from '@hashgraph/sdk'
 import { useWalletContext } from '../context/WalletContext'
-
-const dAppConnector = new DAppConnector(
-  {
-    name: 'CircleFi',
-    description: 'Decentralized Rotating Credit Protocol',
-    url: window.location.origin,
-    icons: [window.location.origin + '/favicon.ico'],
-  },
-  LedgerId.TESTNET,
-  import.meta.env.VITE_WALLETCONNECT_PROJECT_ID
-)
 
 export function useWallet() {
   const {
@@ -35,6 +22,19 @@ export function useWallet() {
 
     try {
       if (walletType === 'hashpack') {
+        const { DAppConnector } = await import('@hashgraph/hedera-wallet-connect')
+        const dAppConnector = new DAppConnector(
+          {
+            name: 'CircleFi',
+            description: 'Decentralized Rotating Credit Protocol',
+            url: window.location.origin,
+            icons: [window.location.origin + '/favicon.ico'],
+          },
+          'testnet',
+          import.meta.env.VITE_WALLETCONNECT_PROJECT_ID
+        )
+
+        await new Promise((resolve) => setTimeout(resolve, 100))
         await dAppConnector.init({ logger: 'error' })
 
         dAppConnector.walletConnectClient?.on('session_event', (event) => {
@@ -80,8 +80,8 @@ export function useWallet() {
     setSigner(null)
     setError(null)
 
-    if (dAppConnector?.walletConnect?.session) {
-      dAppConnector.disconnect({
+    if (connector?.walletConnect?.session) {
+      connector.disconnect({
         reason: {
           code: 6000,
           message: 'User disconnected',
@@ -94,7 +94,7 @@ export function useWallet() {
     sessionStorage.removeItem('walletConnected')
 
     console.log('👋 Wallet disconnected')
-  }, [])
+  }, [connector, setAccount, setConnected, setConnector])
 
   const executeContract = useCallback(async (contractAddress, abi, functionName, args = []) => {
     if (!connected || !connector) {
