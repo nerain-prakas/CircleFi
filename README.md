@@ -1,0 +1,2 @@
+# CircleFi
+CircleFi is a decentralized rotating credit protocol built on Hedera,  reimagining the 3000-year-old Indian chit fund system as a trustless,  transparent, and composable DeFi primitive.  No foreman. No fraud. No middlemen.  Members pool funds monthly, bid blindly for the pot via Hedera Consensus  Service, and govern the protocol themselves through on-chain voting.  An AI risk agent monitors payment behavior and predicts defaults before  they happen — keeping the circle safe for everyone.  Built for the Hedera Hello Future Apex Hackathon 2026.
