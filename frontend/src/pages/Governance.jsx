@@ -187,7 +187,7 @@ function Governance() {
                 key={proposal.id}
                 proposal={proposal}
                 onVote={vote}
-                userAddress={address}
+                userAddress={account}
               />
             ))
           )}
