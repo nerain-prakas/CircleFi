@@ -1,14 +1,14 @@
 {
   "contractName": "CircleFi",
-  "contractAddress": "0xF45E735F2AE998c71bB2a58bC76B09ad5E2cCbDE",
+  "contractAddress": "0x77C47F49671b0936C117300CEaa6675A2d219176",
   "deployerAddress": "0x4230dEB6D0DaaFed4c2231ab66CFE7FB986b3fF8",
   "network": "hederaTestnet",
   "chainId": 296,
   "deploymentTimestamp": "2026-03-19T10:39:33.374Z",
-  "transactionHash": "0xa1cdeac7fb86583ba354963422dce07b0f38f7640eadaeb53e2654541e40a820",
-  "blockNumber": 32934555,
+"transactionHash": "0xbf3c61fa6ae3b524592fb91f149f83cc837b6e3d166584d49d0dceb484325940",
+  "blockNumber": 32927459,
   "gasUsed": "3598824",
-  "hcsTopicId": "0.0.8291282",
+  "hcsTopicId": "0.0.8298460",
   "hcsTopicMemo": "CircleFi Sealed Bids",
-  "topicCreationTimestamp": "2026-03-19T18:31:58.383Z"
+  "topicCreationTimestamp": "2026-03-20T05:54:41.345Z"
 }

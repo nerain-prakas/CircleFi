@@ -6,12 +6,11 @@ import useContract from '../hooks/useContract'
 function Groups() {
   const navigate = useNavigate()
   const { connected } = useWalletContext()
-  const isConnected = connected
   const {
+    readContract,
     getProvider,
     initializeContract,
-    getGroupCount,
-    getGroupSummary,
+    fetchGroupsData,
     getGroupMembers,
     joinGroup,
   } = useContract()
@@ -22,27 +21,27 @@ function Groups() {
   const contractData = groups
 
   const loadGroups = useCallback(async () => {
-    if (!isConnected) return
-
     setLoading(true)
     setError(null)
     try {
       const provider = getProvider()
       await initializeContract(provider)
 
-      const total = Number(await getGroupCount())
+      const snapshot = await fetchGroupsData()
+      const fetchedGroups = snapshot?.groups || []
       const allGroups = []
 
-      for (let i = 0; i < total; i += 1) {
-        const summary = await getGroupSummary(i)
-        const members = await getGroupMembers(i)
+      for (let i = 0; i < fetchedGroups.length; i += 1) {
+        const summary = fetchedGroups[i]
+        const groupId = Number(summary?.groupId ?? i)
+        const members = await getGroupMembers(groupId)
 
         allGroups.push({
-          id: Number(summary.groupId ?? i),
-          memberCount: Number(summary.memberCount ?? 0),
-          monthlyContribution: summary.monthlyContribution?.toString?.() ?? '0',
-          isActive: Boolean(summary.isActive),
-          admin: summary.admin,
+          id: groupId,
+          memberCount: Number(summary?.memberCount ?? 0),
+          monthlyContribution: summary?.monthlyContribution?.toString?.() ?? '0',
+          isActive: Boolean(summary?.isActive),
+          admin: summary?.admin,
           members: members || [],
         })
       }
@@ -53,23 +52,29 @@ function Groups() {
     } finally {
       setLoading(false)
     }
-  }, [isConnected, getProvider, initializeContract, getGroupCount, getGroupSummary, getGroupMembers])
+  }, [getProvider, initializeContract, fetchGroupsData, getGroupMembers])
 
   useEffect(() => {
-    if (!hasFetched && isConnected) {
+    if (!readContract || hasFetched) return
+    setHasFetched(true)
+    loadGroups()
+  }, [readContract, hasFetched, loadGroups])
+
+  useEffect(() => {
+    if (!connected) {
+      return
+    }
+    if (!hasFetched && readContract) {
       setHasFetched(true)
       loadGroups()
     }
-  }, [hasFetched, isConnected, loadGroups])
-
-  useEffect(() => {
-    if (!isConnected) {
-      setHasFetched(false)
-      setGroups([])
-    }
-  }, [isConnected])
+  }, [connected, hasFetched, readContract, loadGroups])
 
   const handleJoin = async (groupId) => {
+    if (!connected) {
+      setError('Connect wallet to join a circle')
+      return
+    }
     setError(null)
     try {
       const provider = getProvider()
