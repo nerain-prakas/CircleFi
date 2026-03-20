@@ -162,7 +162,9 @@ function Groups() {
                   </div>
                   <div>
                     <p className="text-gray-400">Monthly Contribution</p>
-                    <p className="text-lg text-white font-semibold">{group.monthlyContribution} HBAR</p>
+                    <p className="text-lg text-white font-semibold">
+                      {(Number(group?.monthlyContribution || 0) / 100_000_000).toFixed(2)} HBAR
+                    </p>
                   </div>
                 </div>
 

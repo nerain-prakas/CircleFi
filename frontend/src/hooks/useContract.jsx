@@ -10,6 +10,8 @@ import { CONTRACT_ADDRESS, CIRCLEFI_ABI } from '../utils/constants'
 import { MIRROR_NODE_URL } from '../utils/hedera'
 import { useWalletContext } from '../context/WalletContext'
 
+const contractInitialized = { current: false }
+
 /**
  * Hook for contract interactions.
  * - Read operations: ethers JsonRpcProvider (no wallet)
@@ -78,37 +80,48 @@ export function useContract() {
     )
   }, [])
 
-  const initializeContract = useCallback(async (providerOverride) => {
-    if (isInitializing.current && readContract) return readContract
-
-    isInitializing.current = true
+  const initializeContract = useCallback(async () => {
     try {
-      setError(null)
-      const provider = providerOverride || (await getReadProvider())
-      console.log('Provider created:', provider)
+      const provider = new ethers.JsonRpcProvider(
+        import.meta.env.VITE_RPC_URL ||
+        'https://testnet.hashio.io/api'
+      )
+
+      console.log('Provider created, connecting to Hedera testnet...')
+
+      const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS
+      console.log('Contract address:', contractAddress)
+
+      if (!contractAddress) {
+        console.error('VITE_CONTRACT_ADDRESS is not set!')
+        return null
+      }
 
       const contract = new ethers.Contract(
-        import.meta.env.VITE_CONTRACT_ADDRESS || getContractAddress(),
+        contractAddress,
         CIRCLEFI_ABI,
         provider
       )
 
+      console.log('Contract instance created, verifying...')
       const counter = await contract.groupCounter()
-      console.log('Contract verified, counter:', counter)
+      console.log('Contract verified! groupCounter:', counter.toString())
 
-      setReadContract(contract)
       return contract
     } catch (err) {
-      console.error('Init failed reason:', err.message)
-      setError(err.message)
+      console.error('initializeContract failed:', err.message)
       return null
-    } finally {
-      isInitializing.current = false
     }
-  }, [getContractAddress, getReadProvider, readContract])
+  }, [])
 
   useEffect(() => {
-    initializeContract()
+    const run = async () => {
+      const contract = await initializeContract()
+      if (contract) {
+        setReadContract(contract)
+      }
+    }
+    run()
   }, [initializeContract])
 
   const getHashpackSigner = useCallback(async () => {
@@ -133,6 +146,10 @@ export function useContract() {
         console.error('Contract initialization failed')
         setError('Contract not available')
         return
+      }
+
+      if (!readContract) {
+        setReadContract(activeContract)
       }
 
       return await fetcher(activeContract)
@@ -282,22 +299,23 @@ export function useContract() {
         ? [paramsInput[1], paramsInput[2], paramsInput[3]]
         : paramsInput
 
-      const contributionInTinybars = Math.floor(
+      const contributionTinybars = BigInt(Math.floor(
         Number.parseFloat(String(monthlyContribution).trim()) * 100_000_000
-      )
+      ))
 
-      if (!Number.isFinite(contributionInTinybars) || contributionInTinybars <= 0) {
+      if (contributionTinybars <= 0n) {
         throw new Error('monthlyContribution must be a valid positive number')
       }
 
       let tx = new ContractExecuteTransaction()
         .setContractId(ContractId.fromString(hederaContractId))
         .setGas(300000)
+        .setPayableAmount(Hbar.fromString(monthlyContribution.toString()))
         .setFunction(
           'createChitGroup',
           new ContractFunctionParameters()
             .addUint256(toUintString(memberCount, 'memberCount'))
-            .addUint256(String(contributionInTinybars))
+            .addUint256(contributionTinybars.toString())
             .addUint256(toUintString(duration, 'duration'))
         )
 

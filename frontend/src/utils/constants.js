@@ -87,7 +87,7 @@ export const CIRCLEFI_ABI = [
   {
     "inputs": [],
     "name": "groupCounter",
-    "outputs": [{ "type": "uint256", "name": "" }],
+    "outputs": [{ "type": "uint256" }],
     "stateMutability": "view",
     "type": "function",
   },
