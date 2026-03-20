@@ -96,6 +96,7 @@ export const CIRCLEFI_ABI = [
     "name": "chitGroups",
     "outputs": [
       { "type": "uint256", "name": "groupId" },
+      { "type": "string", "name": "groupName" },
       { "type": "uint256", "name": "memberCount" },
       { "type": "uint256", "name": "monthlyContribution" },
       { "type": "uint256", "name": "duration" },

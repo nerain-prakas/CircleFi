@@ -32,16 +32,24 @@ function Groups() {
       const allGroups = []
 
       for (let i = 0; i < fetchedGroups.length; i += 1) {
-        const summary = fetchedGroups[i]
-        const groupId = Number(summary?.groupId ?? i)
-        const members = await getGroupMembers(groupId)
+        const data = fetchedGroups[i]
+        const group = {
+          groupId: data[0].toString(),
+          groupName: data[1],
+          memberCount: data[2].toString(),
+          monthlyContribution: (BigInt(data[3]) / 100000000n).toString(),
+          duration: data[4].toString(),
+          totalPot: data[5].toString(),
+          currentMonth: data[6].toString(),
+          isActive: data[7],
+          admin: data[8],
+        }
+
+        const members = await getGroupMembers(Number(group.groupId))
 
         allGroups.push({
-          id: groupId,
-          memberCount: Number(summary?.memberCount ?? 0),
-          monthlyContribution: summary?.monthlyContribution?.toString?.() ?? '0',
-          isActive: Boolean(summary?.isActive),
-          admin: summary?.admin,
+          ...group,
+          id: Number(group.groupId),
           members: members || [],
         })
       }
@@ -141,7 +149,7 @@ function Groups() {
               >
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h3 className="text-xl font-bold text-white">Circle #{group.id}</h3>
+                    <h3 className="text-xl font-bold text-white">{group.groupName || `Circle #${group.groupId}`}</h3>
                     <p className="text-sm text-gray-400">Admin: {group.admin}</p>
                   </div>
                   <span
@@ -162,9 +170,7 @@ function Groups() {
                   </div>
                   <div>
                     <p className="text-gray-400">Monthly Contribution</p>
-                    <p className="text-lg text-white font-semibold">
-                      {(Number(group?.monthlyContribution || 0) / 100_000_000).toFixed(2)} HBAR
-                    </p>
+                    <p className="text-lg text-white font-semibold">{group.monthlyContribution} HBAR</p>
                   </div>
                 </div>
 
