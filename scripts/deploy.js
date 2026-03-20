@@ -13,7 +13,9 @@ async function main() {
   console.log(`💰 Account balance: ${balanceInHBAR} HBAR\n`);
 
   console.log("⏳ Deploying CircleFi contract to Hedera Testnet...");
-  const circleFi = await CircleFi.deploy();
+  const circleFi = await CircleFi.deploy({
+    gasLimit: 7000000,
+  });
   await circleFi.waitForDeployment();
 
   const contractAddress = await circleFi.getAddress();

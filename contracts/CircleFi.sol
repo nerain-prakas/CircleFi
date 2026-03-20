@@ -79,7 +79,7 @@ contract CircleFi is ReentrancyGuard, Ownable, Pausable {
         uint256 _memberCount,
         uint256 _monthlyContribution,
         uint256 _duration
-    ) external onlyOwner returns (uint256) {
+    ) external returns (uint256) {
         require(_memberCount > 1, "Must have at least 2 members");
         require(_monthlyContribution > 0, "Contribution must be greater than 0");
         require(_duration > 0, "Duration must be greater than 0");
@@ -111,7 +111,6 @@ contract CircleFi is ReentrancyGuard, Ownable, Pausable {
         require(group.isActive, "Group is not active");
         require(!group.hasJoined[msg.sender], "Already joined this group");
         require(group.members.length < group.memberCount, "Group is full");
-        require(group.reputationScores[msg.sender] >= MIN_REPUTATION_SCORE, "Insufficient reputation score");
 
         group.members.push(msg.sender);
         group.hasJoined[msg.sender] = true;

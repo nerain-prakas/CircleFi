@@ -275,48 +275,37 @@ export function useContract() {
     return callFunction('getCurrentPot', [groupId])
   }, [callFunction])
 
-  const createChitGroup = useCallback(async (...paramsInput) => {
+  const createChitGroup = useCallback(async (memberCount, monthlyContribution, duration) => {
     try {
       setLoading(true)
       setError(null)
 
+      console.log('Creating group with params:', {
+        memberCount,
+        monthlyContribution,
+        duration,
+      })
+
       const { hederaContractId } = await resolveContractIds()
       const signer = await getHashpackSigner()
 
-      const toUintString = (value, fieldName) => {
-        try {
-          const raw = String(value).trim()
-          if (!raw) throw new Error('empty')
-          const normalized = BigInt(raw)
-          if (normalized < 0n) throw new Error('negative')
-          return normalized.toString()
-        } catch {
-          throw new Error(`${fieldName} must be a valid non-negative integer`)
-        }
-      }
+      const contributionTinybars = Math.floor(
+        parseFloat(monthlyContribution) * 100_000_000
+      )
 
-      const [memberCount, monthlyContribution, duration] = paramsInput.length >= 4
-        ? [paramsInput[1], paramsInput[2], paramsInput[3]]
-        : paramsInput
-
-      const contributionTinybars = BigInt(Math.floor(
-        Number.parseFloat(String(monthlyContribution).trim()) * 100_000_000
-      ))
-
-      if (contributionTinybars <= 0n) {
+      if (!Number.isFinite(contributionTinybars) || contributionTinybars <= 0) {
         throw new Error('monthlyContribution must be a valid positive number')
       }
 
       let tx = new ContractExecuteTransaction()
         .setContractId(ContractId.fromString(hederaContractId))
         .setGas(300000)
-        .setPayableAmount(Hbar.fromString(monthlyContribution.toString()))
         .setFunction(
           'createChitGroup',
           new ContractFunctionParameters()
-            .addUint256(toUintString(memberCount, 'memberCount'))
-            .addUint256(contributionTinybars.toString())
-            .addUint256(toUintString(duration, 'duration'))
+            .addUint256(parseInt(memberCount))
+            .addUint256(contributionTinybars)
+            .addUint256(parseInt(duration))
         )
 
       tx = await tx.freezeWithSigner(signer)
