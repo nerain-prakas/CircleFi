@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useWalletContext } from '../context/WalletContext'
 import useContract from '../hooks/useContract'
@@ -6,6 +6,7 @@ import useContract from '../hooks/useContract'
 function Groups() {
   const navigate = useNavigate()
   const { connected } = useWalletContext()
+  const isConnected = connected
   const {
     getProvider,
     initializeContract,
@@ -17,44 +18,56 @@ function Groups() {
   const [loading, setLoading] = useState(false)
   const [groups, setGroups] = useState([])
   const [error, setError] = useState(null)
+  const [hasFetched, setHasFetched] = useState(false)
+  const contractData = groups
+
+  const loadGroups = useCallback(async () => {
+    if (!isConnected) return
+
+    setLoading(true)
+    setError(null)
+    try {
+      const provider = getProvider()
+      await initializeContract(provider)
+
+      const total = Number(await getGroupCount())
+      const allGroups = []
+
+      for (let i = 0; i < total; i += 1) {
+        const summary = await getGroupSummary(i)
+        const members = await getGroupMembers(i)
+
+        allGroups.push({
+          id: Number(summary.groupId ?? i),
+          memberCount: Number(summary.memberCount ?? 0),
+          monthlyContribution: summary.monthlyContribution?.toString?.() ?? '0',
+          isActive: Boolean(summary.isActive),
+          admin: summary.admin,
+          members: members || [],
+        })
+      }
+
+      setGroups(allGroups || [])
+    } catch (err) {
+      setError(err.message || 'Failed to load groups')
+    } finally {
+      setLoading(false)
+    }
+  }, [isConnected, getProvider, initializeContract, getGroupCount, getGroupSummary, getGroupMembers])
 
   useEffect(() => {
-    if (!connected) return
-
-    const loadGroups = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const provider = getProvider()
-        await initializeContract(provider)
-
-        const total = Number(await getGroupCount())
-        const allGroups = []
-
-        for (let i = 0; i < total; i += 1) {
-          const summary = await getGroupSummary(i)
-          const members = await getGroupMembers(i)
-
-          allGroups.push({
-            id: Number(summary.groupId ?? i),
-            memberCount: Number(summary.memberCount ?? 0),
-            monthlyContribution: summary.monthlyContribution?.toString?.() ?? '0',
-            isActive: Boolean(summary.isActive),
-            admin: summary.admin,
-            members,
-          })
-        }
-
-        setGroups(allGroups)
-      } catch (err) {
-        setError(err.message || 'Failed to load groups')
-      } finally {
-        setLoading(false)
-      }
+    if (!hasFetched && isConnected) {
+      setHasFetched(true)
+      loadGroups()
     }
+  }, [hasFetched, isConnected, loadGroups])
 
-    loadGroups()
-  }, [connected, getProvider, initializeContract, getGroupCount, getGroupSummary, getGroupMembers])
+  useEffect(() => {
+    if (!isConnected) {
+      setHasFetched(false)
+      setGroups([])
+    }
+  }, [isConnected])
 
   const handleJoin = async (groupId) => {
     setError(null)
@@ -68,6 +81,14 @@ function Groups() {
     }
   }
 
+  if (!contractData && loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-cyan-400">Loading...</div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen pt-24 px-4 pb-12 bg-black">
       <div className="max-w-6xl mx-auto">
@@ -76,12 +97,22 @@ function Groups() {
             <h1 className="text-4xl font-bold text-white mb-2">Groups</h1>
             <p className="text-gray-400">Browse and join available circles</p>
           </div>
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-purple-500 text-white rounded-lg font-semibold hover:from-cyan-600 hover:to-purple-600 transition-all"
-          >
-            Create New Circle
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setHasFetched(false)
+              }}
+              className="px-6 py-3 border border-cyan-400 text-cyan-300 rounded-lg font-semibold hover:bg-cyan-900 hover:bg-opacity-30 transition-colors"
+            >
+              Refresh
+            </button>
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-purple-500 text-white rounded-lg font-semibold hover:from-cyan-600 hover:to-purple-600 transition-all"
+            >
+              Create New Circle
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -92,13 +123,13 @@ function Groups() {
 
         {loading ? (
           <div className="text-center text-gray-400 py-12">Loading circles...</div>
-        ) : groups.length === 0 ? (
+        ) : (groups || []).length === 0 ? (
           <div className="text-center text-gray-400 py-12">
             <p>No circles yet. Create the first one!</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {groups.map((group) => (
+            {(groups || []).map((group) => (
               <div
                 key={group.id}
                 className="bg-gradient-to-br from-gray-900 from-opacity-40 to-black to-opacity-10 rounded-lg p-6 border border-gray-700 border-opacity-30"
@@ -122,7 +153,7 @@ function Groups() {
                 <div className="grid grid-cols-2 gap-4 text-sm mb-6">
                   <div>
                     <p className="text-gray-400">Members</p>
-                    <p className="text-lg text-white font-semibold">{group.members.length}/{group.memberCount}</p>
+                    <p className="text-lg text-white font-semibold">{(group?.members || []).length}/{group.memberCount}</p>
                   </div>
                   <div>
                     <p className="text-gray-400">Monthly Contribution</p>

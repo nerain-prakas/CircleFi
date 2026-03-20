@@ -5,6 +5,7 @@ import useContract from '../hooks/useContract'
 
 function Profile() {
   const { account, connected } = useWalletContext()
+  const isConnected = connected
   const { getProvider, fetchContractData } = useContract()
   const [userProfile, setUserProfile] = useState({
     address: account,
@@ -52,9 +53,12 @@ function Profile() {
   const [refreshing, setRefreshing] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [errorMessage, setErrorMessage] = useState(null)
+  const [hasFetched, setHasFetched] = useState(false)
+  const loading = refreshing
+  const contractData = userProfile
 
   const refreshProfileData = useCallback(async () => {
-    if (!connected || !account) return
+    if (!isConnected || !account) return
 
     setRefreshing(true)
     setErrorMessage(null)
@@ -75,8 +79,8 @@ function Profile() {
       setUserProfile((currentProfile) => ({
         ...currentProfile,
         address: account,
-        reputation: snapshot.reputation,
-        totalCircles: snapshot.totalCircles,
+        reputation: snapshot?.reputation ?? 0,
+        totalCircles: snapshot?.totalCircles ?? 0,
       }))
       setLastUpdated(new Date())
     } catch (err) {
@@ -84,13 +88,30 @@ function Profile() {
     } finally {
       setRefreshing(false)
     }
-  }, [connected, account, getProvider, fetchContractData])
+  }, [isConnected, account, getProvider, fetchContractData])
 
   useEffect(() => {
-    refreshProfileData()
-  }, [refreshProfileData])
+    if (!hasFetched && isConnected) {
+      setHasFetched(true)
+      refreshProfileData()
+    }
+  }, [hasFetched, isConnected, refreshProfileData])
 
-  if (!connected) {
+  useEffect(() => {
+    if (!isConnected) {
+      setHasFetched(false)
+    }
+  }, [isConnected])
+
+  if (!contractData && loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-cyan-400">Loading...</div>
+      </div>
+    )
+  }
+
+  if (!isConnected) {
     return (
       <div className="min-h-screen pt-24 px-4 bg-black">
         <div className="max-w-4xl mx-auto">
@@ -113,7 +134,9 @@ function Profile() {
             <p className="text-gray-400">Manage your CircleFi account and memberships</p>
           </div>
           <RefreshControl
-            onRefresh={refreshProfileData}
+            onRefresh={() => {
+              setHasFetched(false)
+            }}
             refreshing={refreshing}
             lastUpdated={lastUpdated}
           />
@@ -127,10 +150,10 @@ function Profile() {
 
         {/* Top Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard label="Wallet Address" value={`${account?.substring(0, 10)}...${account?.substring(account.length - 8)}`} icon="👛" />
-          <StatCard label="Total Dividends" value={`${userProfile.totalDividends}`} unit="HBAR" icon="💰" />
-          <StatCard label="Active Circles" value={userProfile.totalCircles} icon="⭕" />
-          <StatCard label="NFT Badges" value={userProfile.nftBadges.length} icon="🏆" />
+          <StatCard label="Wallet Address" value={`${account?.substring(0, 10)}...${account?.substring((account || '').length - 8)}`} icon="👛" />
+          <StatCard label="Total Dividends" value={`${userProfile?.totalDividends ?? 0}`} unit="HBAR" icon="💰" />
+          <StatCard label="Active Circles" value={userProfile?.totalCircles ?? 0} icon="⭕" />
+          <StatCard label="NFT Badges" value={(userProfile?.nftBadges || []).length} icon="🏆" />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
@@ -140,11 +163,11 @@ function Profile() {
               <h2 className="text-2xl font-bold text-white mb-6 text-center">Reputation</h2>
 
               {/* Reputation Ring */}
-              <ReputationRing score={userProfile.reputation} size="md" />
+              <ReputationRing score={userProfile?.reputation ?? 0} size="md" />
 
               <div className="mt-8 space-y-2">
                 <p className="text-center text-gray-400 text-sm">Score</p>
-                <p className="text-center text-3xl font-bold text-cyan-400">{userProfile.reputation}</p>
+                <p className="text-center text-3xl font-bold text-cyan-400">{userProfile?.reputation ?? 0}</p>
               </div>
 
               {/* Reputation Info */}
@@ -161,13 +184,13 @@ function Profile() {
             <div className="bg-gradient-to-br from-gray-900 from-opacity-40 to-black to-opacity-10 rounded-lg p-6 border border-gray-700 border-opacity-30">
               <h3 className="text-2xl font-bold text-white mb-6">NFT Membership Badges</h3>
 
-              {userProfile.nftBadges.length === 0 ? (
+              {(userProfile?.nftBadges || []).length === 0 ? (
                 <div className="text-center py-8 text-gray-400">
                   <p>Start earning badges by participating in circles</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {userProfile.nftBadges.map((badge) => (
+                  {(userProfile?.nftBadges || []).map((badge) => (
                     <NFTBadgeCard key={badge.id} badge={badge} />
                   ))}
                 </div>
@@ -180,13 +203,13 @@ function Profile() {
         <div className="mb-8 bg-gradient-to-br from-gray-900 from-opacity-40 to-black to-opacity-10 rounded-lg p-6 border border-gray-700 border-opacity-30">
           <h3 className="text-2xl font-bold text-white mb-6">Circles Joined</h3>
 
-          {userProfile.circles.length === 0 ? (
+          {(userProfile?.circles || []).length === 0 ? (
             <div className="text-center py-8 text-gray-400">
               <p>You haven't joined any circles yet</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {userProfile.circles.map((circle) => (
+              {(userProfile?.circles || []).map((circle) => (
                 <CircleCard key={circle.id} circle={circle} />
               ))}
             </div>
@@ -198,17 +221,17 @@ function Profile() {
           <div className="bg-gradient-to-br from-gray-900 from-opacity-40 to-black to-opacity-10 rounded-lg p-6 border border-gray-700 border-opacity-30">
             <h3 className="text-2xl font-bold text-white mb-6">Payment History Timeline</h3>
 
-            {userProfile.paymentHistory.length === 0 ? (
+            {(userProfile?.paymentHistory || []).length === 0 ? (
               <div className="text-center py-8 text-gray-400">
                 <p>No payment history</p>
               </div>
             ) : (
               <div className="space-y-4 max-h-80 overflow-y-auto">
-                {userProfile.paymentHistory.map((payment, index) => (
+                {(userProfile?.paymentHistory || []).map((payment, index) => (
                   <PaymentItem
                     key={payment.id}
                     payment={payment}
-                    isLast={index === userProfile.paymentHistory.length - 1}
+                    isLast={index === (userProfile?.paymentHistory || []).length - 1}
                   />
                 ))}
               </div>
@@ -220,9 +243,9 @@ function Profile() {
             <div className="bg-gradient-to-br from-cyan-900 from-opacity-30 to-blue-900 to-opacity-20 rounded-lg p-6 border border-cyan-600 border-opacity-30">
               <h4 className="text-lg font-bold text-white mb-4">Performance Stats</h4>
               <div className="space-y-3 text-sm">
-                <StatRow label="Total Paid" value={`${userProfile.paymentHistory.reduce((sum, p) => sum + p.amount, 0)} HBAR`} />
+                <StatRow label="Total Paid" value={`${(userProfile?.paymentHistory || []).reduce((sum, p) => sum + p.amount, 0)} HBAR`} />
                 <StatRow label="On-Time Payments" value="5/5 (100%)" />
-                <StatRow label="Average Payment" value={`${(userProfile.paymentHistory.reduce((sum, p) => sum + p.amount, 0) / userProfile.paymentHistory.length).toFixed(2)} HBAR`} />
+                <StatRow label="Average Payment" value={`${(((userProfile?.paymentHistory || []).reduce((sum, p) => sum + p.amount, 0)) / Math.max((userProfile?.paymentHistory || []).length, 1)).toFixed(2)} HBAR`} />
                 <StatRow label="Member Since" value="Sep 2024" />
               </div>
             </div>
@@ -230,7 +253,7 @@ function Profile() {
             <div className="bg-gradient-to-br from-purple-900 from-opacity-30 to-pink-900 to-opacity-20 rounded-lg p-6 border border-purple-600 border-opacity-30">
               <h4 className="text-lg font-bold text-white mb-4">Earning Summary</h4>
               <div className="space-y-3 text-sm">
-                <StatRow label="Total Dividends Received" value={`${userProfile.totalDividends} HBAR`} highlight />
+                <StatRow label="Total Dividends Received" value={`${userProfile?.totalDividends ?? 0} HBAR`} highlight />
                 <StatRow label="Pending Dividends" value="0.5 HBAR" />
                 <StatRow label="Highest Bid Won" value="0.8 HBAR" />
                 <StatRow label="Average Bid Spread" value="0.3 HBAR" />

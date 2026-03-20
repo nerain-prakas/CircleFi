@@ -1,16 +1,32 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { BrowserProvider, Contract, JsonRpcProvider, parseEther } from 'ethers'
+import {
+  AccountId,
+  ContractExecuteTransaction,
+  ContractFunctionParameters,
+  ContractId,
+  TransactionId,
+} from '@hashgraph/sdk'
+import { transactionToBase64String } from '@hashgraph/hedera-wallet-connect'
 import { CONTRACT_ADDRESS, CIRCLEFI_ABI, RPC_URL } from '../utils/constants'
+import { MIRROR_NODE_URL } from '../utils/hedera'
 import { useWalletContext } from '../context/WalletContext'
 
 /**
  * Hook for contract interactions via ethers.js
  */
 export function useContract() {
-  const { connector } = useWalletContext()
+  const { connector, account } = useWalletContext()
   const [contract, setContract] = useState(null)
+  const [resolvedContractIds, setResolvedContractIds] = useState({
+    evmAddress: null,
+    hederaContractId: null,
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const isInitializing = useRef(false)
+  const isFetching = useRef(false)
+  const isCalling = useRef(false)
 
   const getContractAddress = useCallback(() => {
     const address = CONTRACT_ADDRESS || import.meta.env.VITE_CONTRACT_ADDRESS
@@ -19,6 +35,32 @@ export function useContract() {
     }
     return address
   }, [])
+
+  const resolveContractIds = useCallback(async () => {
+    const evmAddress = getContractAddress()
+
+    if (
+      resolvedContractIds.evmAddress?.toLowerCase() === evmAddress.toLowerCase() &&
+      resolvedContractIds.hederaContractId
+    ) {
+      return resolvedContractIds
+    }
+
+    const response = await fetch(`${MIRROR_NODE_URL}/contracts/${evmAddress}`)
+    if (!response.ok) {
+      throw new Error(`Failed to resolve Hedera Contract ID: ${response.status} ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    const hederaContractId = data?.contract_id
+    if (!hederaContractId) {
+      throw new Error('Mirror node response missing contract_id for configured contract address')
+    }
+
+    const nextIds = { evmAddress, hederaContractId }
+    setResolvedContractIds(nextIds)
+    return nextIds
+  }, [getContractAddress, resolvedContractIds])
 
   /**
    * Get provider instance
@@ -36,28 +78,39 @@ export function useContract() {
       throw new Error('Wallet not connected')
     }
 
+    const dAppSigner = connector.signers[0]
+
+    // DAppSigner exposes getProvider() which returns a proper EIP-1193 provider.
+    // Wrap it with Ethers BrowserProvider to get a standard Ethers v6 signer.
     try {
-      const wcProvider = connector.signers[0].provider
-      if (wcProvider) {
-        const provider = new BrowserProvider(wcProvider)
-        return await provider.getSigner()
+      const eip1193Provider =
+        typeof dAppSigner.getProvider === 'function'
+          ? dAppSigner.getProvider()
+          : dAppSigner.provider
+
+      if (eip1193Provider) {
+        const browserProvider = new BrowserProvider(eip1193Provider)
+        return await browserProvider.getSigner()
       }
     } catch (err) {
-      console.log('WC provider fallback:', err)
+      console.warn('Could not get EIP-1193 provider from DAppSigner:', err)
     }
 
-    // Final fallback: use HashPack signer directly.
-    return connector.signers[0]
+    throw new Error(
+      'Could not obtain a valid Ethers signer from the connected wallet. ' +
+      'Ensure HashPack is unlocked and on Hedera Testnet.'
+    )
   }, [connector])
 
   /**
    * Initialize contract instance for read operations with a provider.
    */
   const initializeContract = useCallback(async (provider) => {
+    if (isInitializing.current) return contract
+    isInitializing.current = true
     try {
       setError(null)
-
-      const address = getContractAddress()
+      const { evmAddress } = await resolveContractIds()
       const activeProvider = provider || (await getReadProvider())
 
       if (!activeProvider) {
@@ -66,7 +119,7 @@ export function useContract() {
 
       // Create contract instance
       const contractInstance = new Contract(
-        address,
+        evmAddress,
         CIRCLEFI_ABI,
         activeProvider
       )
@@ -77,14 +130,18 @@ export function useContract() {
       console.error('Contract initialization error:', err)
       setError(err.message)
       throw err
+    } finally {
+      isInitializing.current = false
     }
-  }, [getContractAddress, getReadProvider])
+  }, [contract, getReadProvider, resolveContractIds])
 
   /**
    * Fetch contract data only when called explicitly.
    */
   const fetchContractData = useCallback(
     async (fetcher, provider) => {
+      if (isFetching.current) return
+      isFetching.current = true
       try {
         console.log('Fetching with contract:', import.meta.env.VITE_CONTRACT_ADDRESS)
         setLoading(true)
@@ -98,6 +155,7 @@ export function useContract() {
         setError(err.message)
         throw err
       } finally {
+        isFetching.current = false
         setLoading(false)
       }
     },
@@ -108,11 +166,17 @@ export function useContract() {
    * Call contract function (read-only)
    */
   const callFunction = useCallback(async (functionName, args = []) => {
+    if (isCalling.current) return
+    isCalling.current = true
     const provider = contract?.runner ?? (await getReadProvider())
-    return fetchContractData(
-      async (activeContract) => activeContract[functionName](...args),
-      provider
-    )
+    try {
+      return fetchContractData(
+        async (activeContract) => activeContract[functionName](...args),
+        provider
+      )
+    } finally {
+      isCalling.current = false
+    }
   }, [contract, fetchContractData, getReadProvider])
 
   /**
@@ -125,20 +189,16 @@ export function useContract() {
 
       const address = getContractAddress()
       const signer = await getSigner()
-      const provider = await getReadProvider()
-      const contractWithProvider = new Contract(address, CIRCLEFI_ABI, provider)
+
+      // Connect contract directly to the signer so Ethers handles tx submission.
+      const contractWithSigner = new Contract(address, CIRCLEFI_ABI, signer)
 
       const callArgs = [...args]
       if (options && Object.keys(options).length > 0) {
         callArgs.push(options)
       }
 
-      const txRequest = await contractWithProvider[functionName].populateTransaction(...callArgs)
-      const tx = await signer.sendTransaction({
-        ...txRequest,
-        gasLimit: txRequest.gasLimit ?? 300000n,
-        gasPrice: txRequest.gasPrice ?? 930000000000n,
-      })
+      const tx = await contractWithSigner[functionName](...callArgs)
       const receipt = await tx.wait()
       return receipt
     } catch (err) {
@@ -148,7 +208,7 @@ export function useContract() {
     } finally {
       setLoading(false)
     }
-  }, [getContractAddress, getReadProvider, getSigner])
+  }, [getContractAddress, getSigner])
 
   /**
    * Get reputation score for an address
@@ -193,45 +253,97 @@ export function useContract() {
     setError(null)
 
     try {
-      const address = getContractAddress()
-      const signer = await getSigner()
-      const provider = await getReadProvider()
-      const contractWithProvider = new Contract(address, CIRCLEFI_ABI, provider)
-      const createChitGroupFn = contractWithProvider.interface.getFunction('createChitGroup')
+      const { hederaContractId } = await resolveContractIds()
+      if (!connector || !connector.signers?.length) {
+        throw new Error('Wallet not connected')
+      }
 
-      let txRequest
-      if (createChitGroupFn.inputs.length === 4) {
-        if (params.length === 4) {
-          const [name, memberCount, contribution, duration] = params
-          txRequest = await contractWithProvider.createChitGroup.populateTransaction(
-            name,
-            memberCount,
-            parseEther(contribution.toString()),
-            duration
-          )
-        } else {
-          throw new Error('createChitGroup requires name, memberCount, contribution, and duration')
+      const accountId = account || connector.signers[0].getAccountId().toString()
+      const network = connector.network?.toString?.() || 'testnet'
+      const signerAccountId = accountId.startsWith('hedera:')
+        ? accountId
+        : `hedera:${network}:${accountId}`
+
+      const contributionWeiFrom = (value) => {
+        const raw = String(value).trim()
+        if (!raw) {
+          throw new Error('contribution must be provided')
         }
+        return parseEther(raw).toString()
+      }
+
+      const uintStringFrom = (value, fieldName) => {
+        try {
+          const raw = String(value).trim()
+          if (!raw) {
+            throw new Error('empty')
+          }
+          const normalized = BigInt(raw)
+          if (normalized < 0n) {
+            throw new Error('negative')
+          }
+          return normalized.toString()
+        } catch {
+          throw new Error(`${fieldName} must be a valid non-negative integer`)
+        }
+      }
+
+      let tx
+      if (params.length === 4) {
+        const [name, memberCount, contribution, duration] = params
+        tx = new ContractExecuteTransaction()
+          .setContractId(ContractId.fromString(hederaContractId))
+          .setGas(300000)
+          .setFunction(
+            'createChitGroup',
+            new ContractFunctionParameters()
+              .addString(String(name))
+              .addUint256(uintStringFrom(memberCount, 'memberCount'))
+              .addUint256(contributionWeiFrom(contribution))
+              .addUint256(uintStringFrom(duration, 'duration'))
+          )
       } else {
         const [memberCount, contribution, duration] = params.length === 4
           ? [params[1], params[2], params[3]]
           : params
 
-        txRequest = await contractWithProvider.createChitGroup.populateTransaction(
-          memberCount,
-          parseEther(contribution.toString()),
-          duration
-        )
+        tx = new ContractExecuteTransaction()
+          .setContractId(ContractId.fromString(hederaContractId))
+          .setGas(300000)
+          .setFunction(
+            'createChitGroup',
+            new ContractFunctionParameters()
+              .addUint256(uintStringFrom(memberCount, 'memberCount'))
+              .addUint256(contributionWeiFrom(contribution))
+              .addUint256(uintStringFrom(duration, 'duration'))
+          )
       }
 
-      const tx = await signer.sendTransaction({
-        ...txRequest,
-        gasLimit: txRequest.gasLimit ?? 300000n,
-        gasPrice: txRequest.gasPrice ?? 930000000000n,
+      // Ensure transaction has transactionId/nodeAccountIds before serializing for WalletConnect.
+      const dappSigner = connector.signers[0]
+      const plainAccountId = accountId.startsWith('hedera:')
+        ? accountId.split(':').pop()
+        : accountId
+
+      if (typeof tx.freezeWithSigner === 'function' && dappSigner) {
+        await tx.freezeWithSigner(dappSigner)
+      } else if (typeof dappSigner?.getClient === 'function') {
+        const client = dappSigner.getClient()
+        tx.freezeWith(client)
+      } else {
+        tx
+          .setTransactionId(TransactionId.generate(AccountId.fromString(plainAccountId)))
+          .setNodeAccountIds([AccountId.fromString('0.0.3')])
+          .freeze()
+      }
+
+      const txBase64 = transactionToBase64String(tx)
+      const result = await connector.signAndExecuteTransaction({
+        signerAccountId,
+        transactionList: txBase64,
       })
 
-      await tx.wait()
-      return tx
+      return result
     } catch (err) {
       console.error('Contract execution error (createChitGroup):', err)
       setError(err.message)
@@ -239,12 +351,11 @@ export function useContract() {
     } finally {
       setLoading(false)
     }
-  }, [getContractAddress, getReadProvider, getSigner])
+  }, [account, connector, resolveContractIds])
 
   const createGroup = useCallback(async (memberCount, monthlyContribution, duration) => {
-    const contributionWei = parseEther(monthlyContribution)
-    return executeFunction('createChitGroup', [memberCount, contributionWei, duration])
-  }, [executeFunction])
+    return createChitGroup(memberCount, monthlyContribution, duration)
+  }, [createChitGroup])
 
   const joinGroup = useCallback(async (groupId) => {
     return executeFunction('joinChitGroup', [groupId])
@@ -274,8 +385,11 @@ export function useContract() {
 
   return {
     contract,
+    contractAddress: resolvedContractIds.evmAddress,
+    hederaContractId: resolvedContractIds.hederaContractId,
     loading,
     error,
+    resolveContractIds,
     initializeContract,
     getProvider,
     fetchContractData,

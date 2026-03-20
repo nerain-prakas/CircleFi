@@ -7,6 +7,7 @@ import useContract from '../hooks/useContract'
 
 function Dashboard() {
   const { account, connected } = useWalletContext()
+  const isConnected = connected
   const navigate = useNavigate()
   const {
     getProvider,
@@ -22,6 +23,7 @@ function Dashboard() {
   const [error, setError] = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [hasFetched, setHasFetched] = useState(false)
   const [actionMessage, setActionMessage] = useState(null)
   const [formValues, setFormValues] = useState({
     name: '',
@@ -29,9 +31,10 @@ function Dashboard() {
     contribution: '',
     duration: '',
   })
+  const contractData = groups
 
   const loadGroups = useCallback(async () => {
-    if (!connected || !account) {
+    if (!isConnected || !account) {
       setGroups([])
       setSelectedGroupId(null)
       return
@@ -53,7 +56,7 @@ function Dashboard() {
             activeContract.getCurrentPot(i),
           ])
 
-          const isMember = members.some(
+          const isMember = (members || []).some(
             (member) => member.toLowerCase() === account.toLowerCase()
           )
 
@@ -65,21 +68,22 @@ function Dashboard() {
             duration: Number(summary.duration ?? 0),
             currentMonth: Number(summary.currentMonth ?? 0),
             totalPot: pot?.toString?.() ?? '0',
-            members,
+            members: members || [],
             isActive: Boolean(summary.isActive),
             isMember,
           })
         }
 
-        return allGroups.filter((group) => group.isMember)
+        return (allGroups || []).filter((group) => group.isMember)
       }, provider)
 
-      setGroups(myGroups)
+      const safeGroups = myGroups || []
+      setGroups(safeGroups)
       setSelectedGroupId((currentValue) => {
-        if (myGroups.some((group) => group.id === currentValue)) {
+        if ((safeGroups || []).some((group) => group.id === currentValue)) {
           return currentValue
         }
-        return myGroups[0]?.id ?? null
+        return safeGroups[0]?.id ?? null
       })
       setLastUpdated(new Date())
     } catch (err) {
@@ -87,13 +91,30 @@ function Dashboard() {
     } finally {
       setRefreshing(false)
     }
-  }, [connected, account, getProvider, fetchContractData])
+  }, [isConnected, account, getProvider, fetchContractData])
 
   useEffect(() => {
-    loadGroups()
-  }, [loadGroups])
+    if (!hasFetched && isConnected) {
+      setHasFetched(true)
+      loadGroups()
+    }
+  }, [hasFetched, isConnected, loadGroups])
 
-  const selectedGroup = groups.find((group) => group.id === selectedGroupId)
+  useEffect(() => {
+    if (!isConnected) {
+      setHasFetched(false)
+    }
+  }, [isConnected])
+
+  const selectedGroup = (groups || []).find((group) => group.id === selectedGroupId)
+
+  if (!contractData && refreshing) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-cyan-400">Loading...</div>
+      </div>
+    )
+  }
 
   const handleContribute = async () => {
     if (!selectedGroup) return
@@ -122,7 +143,7 @@ function Dashboard() {
     }
   }
 
-  if (!connected) {
+  if (!isConnected) {
     return (
       <div className="min-h-screen pt-24 px-4 bg-black">
         <div className="max-w-4xl mx-auto">
@@ -145,7 +166,9 @@ function Dashboard() {
             <p className="text-gray-400">Manage your rotating credit circles and bids</p>
           </div>
           <RefreshControl
-            onRefresh={loadGroups}
+            onRefresh={() => {
+              setHasFetched(false)
+            }}
             refreshing={refreshing}
             lastUpdated={lastUpdated}
           />
@@ -178,13 +201,13 @@ function Dashboard() {
               Browse Circles
             </button>
           </div>
-          {groups.length > 0 && (
+          {(groups || []).length > 0 && (
             <select
               value={selectedGroupId ?? ''}
               onChange={(event) => setSelectedGroupId(Number(event.target.value))}
               className="px-4 py-2 bg-gray-800 text-gray-200 rounded-lg border border-gray-700"
             >
-              {groups.map((group) => (
+              {(groups || []).map((group) => (
                 <option key={group.id} value={group.id}>
                   {group.name}
                 </option>
@@ -193,7 +216,7 @@ function Dashboard() {
           )}
         </div>
 
-        {groups.length === 0 ? (
+        {(groups || []).length === 0 ? (
           <div className="text-center text-gray-400 py-12">
             <p>You haven't joined any circles yet.</p>
           </div>
@@ -234,7 +257,7 @@ function Dashboard() {
               setShowCreate(false)
               setFormValues({ name: '', members: '3', contribution: '', duration: '' })
               setActionMessage('Circle created successfully.')
-              await loadGroups()
+              setHasFetched(false)
             } catch (err) {
               setError(err.message || 'Failed to create circle')
             }
@@ -311,7 +334,7 @@ function GroupDetails({ group, onContribute, onExit, onBid }) {
         />
         <StatCard
           label="Members"
-          value={`${group.members.length}/${group.memberCount}`}
+          value={`${(group?.members || []).length}/${group.memberCount}`}
           unit=""
           icon="👥"
           color="yellow"
@@ -340,10 +363,10 @@ function GroupDetails({ group, onContribute, onExit, onBid }) {
         <div className="bg-gradient-to-br from-cyan-900 from-opacity-20 to-purple-900 to-opacity-10 rounded-lg p-6 border border-cyan-500 border-opacity-30">
           <h3 className="text-lg font-bold text-white mb-4">Circle Members</h3>
           <div className="space-y-2">
-            {group.members.length === 0 ? (
+            {(group?.members || []).length === 0 ? (
               <p className="text-gray-400">No members yet.</p>
             ) : (
-              group.members.map((member) => (
+              (group?.members || []).map((member) => (
                 <div key={member} className="text-sm text-gray-300 font-mono">
                   {member}
                 </div>

@@ -8,6 +8,7 @@ import { HCS_TOPIC_ID } from '../utils/constants'
 
 function Auction() {
   const { account, connected } = useWalletContext()
+  const isConnected = connected
   const {
     getProvider,
     initializeContract,
@@ -27,8 +28,10 @@ function Auction() {
   const [potSize, setPotSize] = useState('0')
   const [lastUpdated, setLastUpdated] = useState(null)
   const [errorMessage, setErrorMessage] = useState(null)
+  const [hasFetched, setHasFetched] = useState(false)
+  const contractData = groups
   const refreshAuctionData = useCallback(async () => {
-    if (!connected || !account) {
+    if (!isConnected || !account) {
       setGroups([])
       setSelectedGroupId(null)
       setPotSize('0')
@@ -45,7 +48,7 @@ function Auction() {
 
         for (let i = 0; i < total; i += 1) {
           const members = await activeContract.getMembers(i)
-          const isMember = members.some(
+          const isMember = (members || []).some(
             (member) => member.toLowerCase() === account.toLowerCase()
           )
 
@@ -58,12 +61,14 @@ function Auction() {
         return fetchedGroups
       }, provider)
 
-      setGroups(myGroups)
+      const safeGroups = myGroups || []
+
+      setGroups(safeGroups)
       setSelectedGroupId((currentValue) => {
-        const nextSelectedGroupId = myGroups.some((group) => group.id === currentValue)
+        const nextSelectedGroupId = (safeGroups || []).some((group) => group.id === currentValue)
           ? currentValue
-          : (myGroups[0]?.id ?? null)
-        const selectedGroup = myGroups.find((group) => group.id === nextSelectedGroupId)
+          : (safeGroups[0]?.id ?? null)
+        const selectedGroup = (safeGroups || []).find((group) => group.id === nextSelectedGroupId)
         setPotSize(selectedGroup?.pot ?? '0')
         return nextSelectedGroupId
       })
@@ -73,18 +78,35 @@ function Auction() {
     } finally {
       setRefreshing(false)
     }
-  }, [connected, account, getProvider, fetchContractData])
+  }, [isConnected, account, getProvider, fetchContractData])
 
   useEffect(() => {
-    refreshAuctionData()
-  }, [refreshAuctionData])
+    if (!hasFetched && isConnected) {
+      setHasFetched(true)
+      refreshAuctionData()
+    }
+  }, [hasFetched, isConnected, refreshAuctionData])
 
   useEffect(() => {
-    const selectedGroup = groups.find((group) => group.id === selectedGroupId)
+    if (!isConnected) {
+      setHasFetched(false)
+    }
+  }, [isConnected])
+
+  useEffect(() => {
+    const selectedGroup = (groups || []).find((group) => group.id === selectedGroupId)
     setPotSize(selectedGroup?.pot ?? '0')
   }, [selectedGroupId, groups])
 
-  if (!connected) {
+  if (!contractData && refreshing) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-cyan-400">Loading...</div>
+      </div>
+    )
+  }
+
+  if (!isConnected) {
     return (
       <div className="min-h-screen pt-24 px-4 bg-black">
         <div className="max-w-4xl mx-auto">
@@ -133,7 +155,7 @@ function Auction() {
       const amount = parseEther(bidAmount)
       const saltBytes = new Uint8Array(32)
       crypto.getRandomValues(saltBytes)
-      const salt = `0x${Array.from(saltBytes).map((b) => b.toString(16).padStart(2, '0')).join('')}`
+      const salt = `0x${(Array.from(saltBytes) || []).map((b) => b.toString(16).padStart(2, '0')).join('')}`
       const sealedBidHash = keccak256(
         solidityPacked(['uint256', 'bytes32'], [amount, salt])
       )
@@ -146,9 +168,9 @@ function Auction() {
         throw new Error('VITE_HCS_TOPIC_ID is not set for HCS submission')
       }
 
-      setBidHistory([
+      setBidHistory((previousBidHistory) => [
         {
-          id: bidHistory.length + 1,
+          id: (previousBidHistory || []).length + 1,
           hash: sealedBidHash,
           amount: bidAmount,
           encrypted: encryptedBid,
@@ -156,7 +178,7 @@ function Auction() {
           phase: 'SEALED',
           status: 'Submitted',
         },
-        ...bidHistory,
+        ...(previousBidHistory || []),
       ])
 
       setSubmitted(true)
@@ -195,7 +217,9 @@ function Auction() {
             <p className="text-gray-400">Encrypt and submit your bids for this month's pot</p>
           </div>
           <RefreshControl
-            onRefresh={refreshAuctionData}
+            onRefresh={() => {
+              setHasFetched(false)
+            }}
             refreshing={refreshing}
             lastUpdated={lastUpdated}
           />
@@ -240,8 +264,8 @@ function Auction() {
                     onChange={(event) => setSelectedGroupId(Number(event.target.value))}
                     className="w-full px-4 py-2 bg-gray-800 text-white rounded-lg border border-gray-700 hover:border-cyan-400 focus:border-cyan-400 focus:outline-none transition-colors"
                   >
-                    {groups.length === 0 && <option value="">No circles</option>}
-                    {groups.map((group) => (
+                    {(groups || []).length === 0 && <option value="">No circles</option>}
+                    {(groups || []).map((group) => (
                       <option key={group.id} value={group.id}>
                         Circle #{group.id}
                       </option>
@@ -378,7 +402,7 @@ function Auction() {
                     </div>
                     <div>
                       <p className="text-gray-400 mb-1">Number of Bids</p>
-                      <p className="text-2xl font-bold text-purple-400">{bidHistory.length}</p>
+                      <p className="text-2xl font-bold text-purple-400">{(bidHistory || []).length}</p>
                     </div>
                   </div>
                 </div>
@@ -389,13 +413,13 @@ function Auction() {
             <div className="bg-gradient-to-br from-gray-900 from-opacity-40 to-black to-opacity-10 rounded-lg p-6 border border-gray-700 border-opacity-30">
               <h3 className="text-xl font-bold text-white mb-4">Bid History</h3>
 
-              {bidHistory.length === 0 ? (
+              {(bidHistory || []).length === 0 ? (
                 <div className="text-center py-8 text-gray-400">
                   <p>No bids submitted yet for this auction</p>
                 </div>
               ) : (
                 <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {bidHistory.map((bid) => (
+                  {(bidHistory || []).map((bid) => (
                     <div
                       key={bid.id}
                       className="p-4 bg-gray-800 bg-opacity-40 rounded-lg border border-gray-700 hover:border-cyan-400 hover:border-opacity-50 transition-all"

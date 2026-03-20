@@ -5,6 +5,7 @@ import useContract from '../hooks/useContract'
 
 function Governance() {
   const { account, connected } = useWalletContext()
+  const isConnected = connected
   const { getProvider, fetchContractData } = useContract()
   const [proposals, setProposals] = useState([
     {
@@ -47,9 +48,12 @@ function Governance() {
   const [lastUpdated, setLastUpdated] = useState(null)
   const [errorMessage, setErrorMessage] = useState(null)
   const [chainSnapshot, setChainSnapshot] = useState({ groupCount: 0, reputation: '0' })
+  const [hasFetched, setHasFetched] = useState(false)
+  const loading = refreshing
+  const contractData = proposals
 
   const refreshGovernanceData = useCallback(async () => {
-    if (!connected || !account) return
+    if (!isConnected || !account) return
 
     setRefreshing(true)
     setErrorMessage(null)
@@ -67,20 +71,37 @@ function Governance() {
         }
       }, provider)
 
-      setChainSnapshot(snapshot)
+      setChainSnapshot(snapshot || { groupCount: 0, reputation: '0' })
       setLastUpdated(new Date())
     } catch (err) {
       setErrorMessage(err.message || 'Failed to refresh governance data')
     } finally {
       setRefreshing(false)
     }
-  }, [connected, account, getProvider, fetchContractData])
+  }, [isConnected, account, getProvider, fetchContractData])
 
   useEffect(() => {
-    refreshGovernanceData()
-  }, [refreshGovernanceData])
+    if (!hasFetched && isConnected) {
+      setHasFetched(true)
+      refreshGovernanceData()
+    }
+  }, [hasFetched, isConnected, refreshGovernanceData])
 
-  if (!connected) {
+  useEffect(() => {
+    if (!isConnected) {
+      setHasFetched(false)
+    }
+  }, [isConnected])
+
+  if (!contractData && loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-cyan-400">Loading...</div>
+      </div>
+    )
+  }
+
+  if (!isConnected) {
     return (
       <div className="min-h-screen pt-24 px-4 bg-black">
         <div className="max-w-4xl mx-auto">
@@ -95,7 +116,7 @@ function Governance() {
 
   const vote = (proposalId, voteType) => {
     setProposals(
-      proposals.map((p) => {
+      (proposals || []).map((p) => {
         if (p.id === proposalId) {
           const yesVotes = voteType === 'yes' ? p.yesVotes + 1 : p.yesVotes
           const noVotes = voteType === 'no' ? p.noVotes + 1 : p.noVotes
@@ -119,7 +140,7 @@ function Governance() {
     }
 
     const proposal = {
-      id: Math.max(...proposals.map((p) => p.id)) + 1,
+      id: Math.max(...(proposals || []).map((p) => p.id), 0) + 1,
       ...newProposal,
       yesVotes: 1,
       noVotes: 0,
@@ -129,13 +150,13 @@ function Governance() {
       userVote: 'yes',
     }
 
-    setProposals([proposal, ...proposals])
+    setProposals([proposal, ...(proposals || [])])
     setNewProposal({ title: '', description: '' })
     setShowProposalForm(false)
   }
 
-  const totalYesVotes = proposals.reduce((sum, p) => sum + p.yesVotes, 0)
-  const totalNoVotes = proposals.reduce((sum, p) => sum + p.noVotes, 0)
+  const totalYesVotes = (proposals || []).reduce((sum, p) => sum + p.yesVotes, 0)
+  const totalNoVotes = (proposals || []).reduce((sum, p) => sum + p.noVotes, 0)
 
   return (
     <div className="min-h-screen pt-24 px-4 pb-12 bg-black">
@@ -148,7 +169,9 @@ function Governance() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <RefreshControl
-              onRefresh={refreshGovernanceData}
+              onRefresh={() => {
+                setHasFetched(false)
+              }}
               refreshing={refreshing}
               lastUpdated={lastUpdated}
             />
@@ -173,7 +196,7 @@ function Governance() {
           <VoteStatCard label="Total No Votes" value={totalNoVotes} color="red" icon="👎" />
           <VoteStatCard
             label="Active Proposals"
-            value={proposals.filter((p) => p.status === 'ACTIVE').length}
+            value={(proposals || []).filter((p) => p.status === 'ACTIVE').length}
             color="blue"
             icon="⚡"
           />
@@ -240,12 +263,12 @@ function Governance() {
 
         {/* Proposals */}
         <div className="space-y-6">
-          {proposals.length === 0 ? (
+          {(proposals || []).length === 0 ? (
             <div className="text-center py-12 text-gray-400">
               <p>No proposals yet. Be the first to create one!</p>
             </div>
           ) : (
-            proposals.map((proposal) => (
+            (proposals || []).map((proposal) => (
               <ProposalCard
                 key={proposal.id}
                 proposal={proposal}
