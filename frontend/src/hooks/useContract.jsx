@@ -203,8 +203,16 @@ export function useContract() {
       if (functionName === 'joinChitGroup' || functionName === 'exitGroup' || functionName === 'contribute') {
         params.addUint256(String(args[0]))
       } else if (functionName === 'submitBid') {
+        const bidHash = String(args[1] ?? '')
+        const hashHex = bidHash.startsWith('0x') ? bidHash.slice(2) : bidHash
+        if (hashHex.length !== 64) {
+          throw new Error('submitBid bidHash must be a 32-byte hex string')
+        }
+        const hashBytes = new Uint8Array(
+          (hashHex.match(/.{1,2}/g) || []).map((byte) => parseInt(byte, 16))
+        )
         params.addUint256(String(args[0]))
-        params.addBytes32(args[1])
+        params.addBytes32(hashBytes)
       } else if (functionName === 'revealBid') {
         params.addUint256(String(args[0]))
         params.addUint256(String(args[1]))
@@ -221,8 +229,8 @@ export function useContract() {
         .setGas(300000)
         .setFunction(functionName, params)
 
-      if (options && Number.isFinite(options.hbarAmount) && options.hbarAmount > 0) {
-        tx = tx.setPayableAmount(new Hbar(options.hbarAmount))
+      if (options && Number.isInteger(options.tinybars) && options.tinybars > 0) {
+        tx = tx.setPayableAmount(Hbar.fromTinybars(BigInt(options.tinybars)))
       }
 
       tx = await tx.freezeWithSigner(signer)
@@ -333,13 +341,21 @@ export function useContract() {
   }, [executeFunction])
 
   const contribute = useCallback(async (groupId, amountHbar) => {
-    const amount = Number.parseFloat(String(amountHbar))
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new Error('amountHbar must be a valid positive number')
+    const contributionAmount = Number.parseFloat(String(amountHbar))
+    if (!Number.isFinite(contributionAmount) || contributionAmount <= 0) {
+      throw new Error('contributionAmount must be a valid positive number')
+    }
+
+    const tinybars = Math.floor(
+      parseFloat(contributionAmount) * 100_000_000
+    )
+
+    if (!Number.isFinite(tinybars) || tinybars <= 0) {
+      throw new Error('contributionAmount converts to invalid tinybar amount')
     }
 
     return executeFunction('contribute', [groupId], {
-      hbarAmount: amount,
+      tinybars,
     })
   }, [executeFunction])
 
