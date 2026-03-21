@@ -12,6 +12,19 @@ import { useWalletContext } from '../context/WalletContext'
 
 const contractInitialized = { current: false }
 
+const getHederaContractId = async () => {
+  try {
+    const evmAddress = import.meta.env.VITE_CONTRACT_ADDRESS
+    const mirrorUrl = `${import.meta.env.VITE_MIRROR_NODE_URL}/contracts/${evmAddress}`
+    const response = await fetch(mirrorUrl)
+    const data = await response.json()
+    console.log('Resolved Hedera contract ID:', data.contract_id)
+    return data.contract_id
+  } catch {
+    return import.meta.env.VITE_HEDERA_CONTRACT_ID
+  }
+}
+
 /**
  * Hook for contract interactions.
  * - Read operations: ethers JsonRpcProvider (no wallet)
@@ -184,7 +197,6 @@ export function useContract() {
       setLoading(true)
       setError(null)
 
-      const { hederaContractId } = await resolveContractIds()
       const signer = await getHashpackSigner()
 
       const params = new ContractFunctionParameters()
@@ -205,7 +217,7 @@ export function useContract() {
       }
 
       let tx = new ContractExecuteTransaction()
-        .setContractId(ContractId.fromString(hederaContractId))
+        .setContractId(ContractId.fromString(await getHederaContractId()))
         .setGas(300000)
         .setFunction(functionName, params)
 
@@ -223,7 +235,7 @@ export function useContract() {
     } finally {
       setLoading(false)
     }
-  }, [getHashpackSigner, resolveContractIds])
+  }, [getHashpackSigner])
 
   const fetchGroupsData = useCallback(async () => {
     return fetchContractData(async (activeContract) => {
@@ -275,7 +287,7 @@ export function useContract() {
     return callFunction('getCurrentPot', [groupId])
   }, [callFunction])
 
-  const createChitGroup = useCallback(async (memberCount, monthlyContribution, duration) => {
+  const createChitGroup = useCallback(async (groupName, memberCount, monthlyContribution, duration) => {
     try {
       setLoading(true)
       setError(null)
@@ -286,25 +298,17 @@ export function useContract() {
         duration,
       })
 
-      const { hederaContractId } = await resolveContractIds()
       const signer = await getHashpackSigner()
 
-      const contributionTinybars = Math.floor(
-        parseFloat(monthlyContribution) * 100_000_000
-      )
-
-      if (!Number.isFinite(contributionTinybars) || contributionTinybars <= 0) {
-        throw new Error('monthlyContribution must be a valid positive number')
-      }
-
       let tx = new ContractExecuteTransaction()
-        .setContractId(ContractId.fromString(hederaContractId))
+        .setContractId(ContractId.fromString(await getHederaContractId()))
         .setGas(300000)
         .setFunction(
           'createChitGroup',
           new ContractFunctionParameters()
+            .addString(groupName)
             .addUint256(parseInt(memberCount))
-            .addUint256(contributionTinybars)
+            .addUint256(Math.floor(parseFloat(monthlyContribution) * 100_000_000))
             .addUint256(parseInt(duration))
         )
 
@@ -318,10 +322,10 @@ export function useContract() {
     } finally {
       setLoading(false)
     }
-  }, [getHashpackSigner, resolveContractIds])
+  }, [getHashpackSigner])
 
-  const createGroup = useCallback(async (memberCount, monthlyContribution, duration) => {
-    return createChitGroup(memberCount, monthlyContribution, duration)
+  const createGroup = useCallback(async (groupName, memberCount, monthlyContribution, duration) => {
+    return createChitGroup(groupName, memberCount, monthlyContribution, duration)
   }, [createChitGroup])
 
   const joinGroup = useCallback(async (groupId) => {

@@ -5,6 +5,8 @@ import { useWalletContext } from '../context/WalletContext'
 import CountdownTimer from '../components/CountdownTimer'
 import useContract from '../hooks/useContract'
 
+const tinybarToHbar = (value) => Number(value || 0) / 100000000
+
 function Dashboard() {
   const { account, connected } = useWalletContext()
   const isConnected = connected
@@ -46,7 +48,6 @@ function Dashboard() {
       const provider = getProvider()
       const myGroups = await fetchContractData(async (activeContract) => {
         const total = Number(await activeContract.groupCounter())
-        const groupNameMap = JSON.parse(localStorage.getItem('circlefiGroupNames') || '{}')
         const allGroups = []
 
         for (let i = 0; i < total; i += 1) {
@@ -62,7 +63,7 @@ function Dashboard() {
 
           allGroups.push({
             id: Number(summary.groupId ?? i),
-            name: groupNameMap[i] || `Circle #${i}`,
+            name: summary.groupName || `Circle #${i}`,
             memberCount: Number(summary.memberCount ?? 0),
             monthlyContribution: summary.monthlyContribution?.toString?.() ?? '0',
             duration: Number(summary.duration ?? 0),
@@ -125,6 +126,23 @@ function Dashboard() {
       await initializeContract(provider)
       const amount = formatEther(selectedGroup.monthlyContribution || '0')
       await contribute(selectedGroup.id, amount)
+      setActionMessage('Contribution submitted successfully.')
+      await loadGroups()
+    } catch (err) {
+      setError(err.message || 'Failed to contribute')
+    }
+  }
+
+  const handleContributeForGroup = async (group) => {
+    if (!group) return
+    setError(null)
+    setActionMessage(null)
+    try {
+      const provider = getProvider()
+      await initializeContract(provider)
+      const amount = formatEther(group.monthlyContribution || '0')
+      await contribute(group.id, amount)
+      setSelectedGroupId(group.id)
       setActionMessage('Contribution submitted successfully.')
       await loadGroups()
     } catch (err) {
@@ -221,12 +239,31 @@ function Dashboard() {
             <p>You haven't joined any circles yet.</p>
           </div>
         ) : (
-          <GroupDetails
-            group={selectedGroup}
-            onContribute={handleContribute}
-            onExit={handleExit}
-            onBid={() => navigate('/auction')}
-          />
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+              {(groups || []).map((group) => (
+                <div key={group.id} className="bg-gray-900 bg-opacity-60 border border-gray-700 rounded-lg p-4">
+                  <p className="text-white font-semibold">{group.name}</p>
+                  <p className="text-gray-400 text-sm mt-1">Contribution: {tinybarToHbar(group.monthlyContribution).toFixed(2)} HBAR</p>
+                  <p className="text-gray-400 text-sm">Current Month: {group.currentMonth}</p>
+                  <p className="text-gray-400 text-sm">Members: {(group.members || []).length}/{group.memberCount}</p>
+                  <button
+                    onClick={() => handleContributeForGroup(group)}
+                    className="mt-3 w-full px-3 py-2 bg-cyan-500 text-black rounded-lg font-semibold hover:bg-cyan-400 transition-colors"
+                  >
+                    Contribute
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <GroupDetails
+              group={selectedGroup}
+              onContribute={handleContribute}
+              onExit={handleExit}
+              onBid={() => navigate('/auction')}
+            />
+          </>
         )}
       </div>
 
@@ -242,21 +279,17 @@ function Dashboard() {
               await initializeContract(provider)
 
               const receipt = await createGroup(
+                formValues.name.trim(),
                 Number(formValues.members),
                 formValues.contribution,
                 Number(formValues.duration)
               )
 
-              const groupNameMap = JSON.parse(localStorage.getItem('circlefiGroupNames') || '{}')
-              const nextId = receipt?.logs?.[0]?.args?.groupId ?? null
-              if (nextId !== null && formValues.name.trim()) {
-                groupNameMap[nextId.toString()] = formValues.name.trim()
-                localStorage.setItem('circlefiGroupNames', JSON.stringify(groupNameMap))
-              }
-
               setShowCreate(false)
               setFormValues({ name: '', members: '3', contribution: '', duration: '' })
-              setActionMessage('Circle created successfully.')
+              if (receipt) {
+                setActionMessage('Circle created successfully.')
+              }
               setHasFetched(false)
             } catch (err) {
               setError(err.message || 'Failed to create circle')

@@ -25,6 +25,7 @@ function Auction() {
   const [refreshing, setRefreshing] = useState(false)
   const [groups, setGroups] = useState([])
   const [selectedGroupId, setSelectedGroupId] = useState(null)
+  const [selectedGroup, setSelectedGroup] = useState(null)
   const [potSize, setPotSize] = useState('0')
   const [lastUpdated, setLastUpdated] = useState(null)
   const [errorMessage, setErrorMessage] = useState(null)
@@ -47,14 +48,22 @@ function Auction() {
         const fetchedGroups = []
 
         for (let i = 0; i < total; i += 1) {
-          const members = await activeContract.getMembers(i)
+          const [summary, members, pot] = await Promise.all([
+            activeContract.chitGroups(i),
+            activeContract.getMembers(i),
+            activeContract.getCurrentPot(i),
+          ])
           const isMember = (members || []).some(
             (member) => member.toLowerCase() === account.toLowerCase()
           )
 
           if (isMember) {
-            const pot = await activeContract.getCurrentPot(i)
-            fetchedGroups.push({ id: i, pot: pot?.toString?.() ?? '0' })
+            fetchedGroups.push({
+              id: i,
+              name: summary.groupName || `Circle #${i}`,
+              currentMonth: Number(summary.currentMonth ?? 0),
+              pot: pot?.toString?.() ?? '0',
+            })
           }
         }
 
@@ -94,8 +103,9 @@ function Auction() {
   }, [isConnected])
 
   useEffect(() => {
-    const selectedGroup = (groups || []).find((group) => group.id === selectedGroupId)
-    setPotSize(selectedGroup?.pot ?? '0')
+    const nextSelectedGroup = (groups || []).find((group) => group.id === selectedGroupId) || null
+    setSelectedGroup(nextSelectedGroup)
+    setPotSize(nextSelectedGroup?.pot ?? '0')
   }, [selectedGroupId, groups])
 
   if (!contractData && refreshing) {
@@ -267,11 +277,20 @@ function Auction() {
                     {(groups || []).length === 0 && <option value="">No circles</option>}
                     {(groups || []).map((group) => (
                       <option key={group.id} value={group.id}>
-                        Circle #{group.id}
+                        {group.name}
                       </option>
                     ))}
                   </select>
                 </div>
+
+                {selectedGroup && (
+                  <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg">
+                    <p className="text-sm text-gray-400">Current Month</p>
+                    <p className="text-lg font-semibold text-white mb-2">{selectedGroup.currentMonth}</p>
+                    <p className="text-sm text-gray-400">Pot Size</p>
+                    <p className="text-lg font-semibold text-cyan-400">{formatEther(selectedGroup.pot || '0')} HBAR</p>
+                  </div>
+                )}
 
                 {/* Bid Amount Input */}
                 <div>

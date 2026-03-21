@@ -71,11 +71,13 @@ contract CircleFi is ReentrancyGuard, Ownable, Pausable {
 
     /**
      * @notice Creates a new chit group
+     * @param _groupName Name of the chit group
      * @param _memberCount Number of members in the group
      * @param _monthlyContribution Amount each member contributes monthly
      * @param _duration Duration of the chit group in months
      */
     function createChitGroup(
+        string memory _groupName,
         uint256 _memberCount,
         uint256 _monthlyContribution,
         uint256 _duration
@@ -88,7 +90,7 @@ contract CircleFi is ReentrancyGuard, Ownable, Pausable {
         
         ChitGroup storage newGroup = chitGroups[groupId];
         newGroup.groupId = groupId;
-        newGroup.groupName = "";
+        newGroup.groupName = _groupName;
         newGroup.memberCount = _memberCount;
         newGroup.monthlyContribution = _monthlyContribution;
         newGroup.duration = _duration;

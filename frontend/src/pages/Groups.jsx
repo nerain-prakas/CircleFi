@@ -5,7 +5,7 @@ import useContract from '../hooks/useContract'
 
 function Groups() {
   const navigate = useNavigate()
-  const { connected } = useWalletContext()
+  const { connected, account } = useWalletContext()
   const {
     readContract,
     getProvider,
@@ -17,6 +17,7 @@ function Groups() {
   const [loading, setLoading] = useState(false)
   const [groups, setGroups] = useState([])
   const [error, setError] = useState(null)
+  const [successMessage, setSuccessMessage] = useState(null)
   const [hasFetched, setHasFetched] = useState(false)
   const contractData = groups
 
@@ -36,13 +37,14 @@ function Groups() {
         const group = {
           groupId: data[0].toString(),
           groupName: data[1],
-          memberCount: data[2].toString(),
-          monthlyContribution: (BigInt(data[3]) / 100000000n).toString(),
-          duration: data[4].toString(),
-          totalPot: data[5].toString(),
-          currentMonth: data[6].toString(),
+          memberCount: Number(data[2]),
+          monthlyContribution: Number(data[3]) / 100000000,
+          duration: Number(data[4]),
+          totalPot: Number(data[5]),
+          currentMonth: Number(data[6]),
           isActive: data[7],
           admin: data[8],
+          membersJoined: 0,
         }
 
         const members = await getGroupMembers(Number(group.groupId))
@@ -51,6 +53,9 @@ function Groups() {
           ...group,
           id: Number(group.groupId),
           members: members || [],
+          membersJoined: (members || []).some(
+            (member) => member?.toLowerCase?.() === account?.toLowerCase?.()
+          ) ? 1 : 0,
         })
       }
 
@@ -60,7 +65,7 @@ function Groups() {
     } finally {
       setLoading(false)
     }
-  }, [getProvider, initializeContract, fetchGroupsData, getGroupMembers])
+  }, [account, getProvider, initializeContract, fetchGroupsData, getGroupMembers])
 
   useEffect(() => {
     if (!readContract || hasFetched) return
@@ -84,11 +89,20 @@ function Groups() {
       return
     }
     setError(null)
+    setSuccessMessage(null)
     try {
       const provider = getProvider()
       await initializeContract(provider)
       await joinGroup(groupId)
-      navigate('/dashboard')
+      await loadGroups()
+      setGroups((previousGroups) => (previousGroups || []).map((group) => {
+        if (group.id !== groupId) return group
+        return {
+          ...group,
+          membersJoined: 1,
+        }
+      }))
+      setSuccessMessage('Joined successfully!')
     } catch (err) {
       setError(err.message || 'Failed to join circle')
     }
@@ -134,6 +148,12 @@ function Groups() {
           </div>
         )}
 
+        {successMessage && (
+          <div className="mb-6 p-4 bg-green-900 bg-opacity-20 border border-green-700 rounded-lg text-green-200">
+            {successMessage}
+          </div>
+        )}
+
         {loading ? (
           <div className="text-center text-gray-400 py-12">Loading circles...</div>
         ) : (groups || []).length === 0 ? (
@@ -176,9 +196,10 @@ function Groups() {
 
                 <button
                   onClick={() => handleJoin(group.id)}
+                  disabled={group.membersJoined > 0}
                   className="w-full px-4 py-2 bg-cyan-400 text-black rounded-lg font-semibold hover:bg-cyan-300 transition-colors"
                 >
-                  Join Circle
+                  {group.membersJoined > 0 ? 'Joined' : 'Join Circle'}
                 </button>
               </div>
             ))}

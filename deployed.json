@@ -1,11 +1,11 @@
 {
   "contractName": "CircleFi",
-  "contractAddress": "0x6dc6Fcb0A6c93bE777cb205AF93f7735e59852e1",
+  "contractAddress": "0x59F9AD03225721D0eAFd0D9c6941BC36eeA99646",
   "deployerAddress": "0x4230dEB6D0DaaFed4c2231ab66CFE7FB986b3fF8",
   "network": "hederaTestnet",
   "chainId": 296,
-  "deploymentTimestamp": "2026-03-20T10:35:51.080Z",
-  "transactionHash": "0x56a5398bfce38c19f75715f65b370f685ad2bb1debdac5c86a1912a46612b24c",
-  "blockNumber": 32977642,
-  "gasUsed": "3545404"
+  "deploymentTimestamp": "2026-03-21T10:17:33.541Z",
+  "transactionHash": "0xa4904c14d7f967ad501db5be02342827c9493f621c7fdd92dc498add08446ef6",
+  "blockNumber": 33020294,
+  "gasUsed": "3612620"
 }

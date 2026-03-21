@@ -9,6 +9,7 @@ export const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS
 export const CIRCLEFI_ABI = [
   {
     "inputs": [
+      { "type": "string", "name": "_groupName" },
       { "type": "uint256", "name": "_memberCount" },
       { "type": "uint256", "name": "_monthlyContribution" },
       { "type": "uint256", "name": "_duration" },
