@@ -7,6 +7,19 @@ import useContract from '../hooks/useContract'
 
 const tinybarToHbar = (value) => Number(value || 0) / 100000000
 
+const getEvmAddress = async (hederaAccountId) => {
+  try {
+    const id = hederaAccountId.toString().trim()
+    const response = await fetch(
+      `https://testnet.mirrornode.hedera.com/api/v1/accounts/${id}`
+    )
+    const data = await response.json()
+    return data.evm_address?.toLowerCase() || ''
+  } catch {
+    return ''
+  }
+}
+
 function Dashboard() {
   const { account, connected } = useWalletContext()
   const isConnected = connected
@@ -49,6 +62,8 @@ function Dashboard() {
       const myGroups = await fetchContractData(async (activeContract) => {
         const total = Number(await activeContract.groupCounter())
         const allGroups = []
+        const userEvmAddress = await getEvmAddress(account)
+        console.log('User EVM:', userEvmAddress)
 
         for (let i = 0; i < total; i += 1) {
           const [summary, members, pot] = await Promise.all([
@@ -56,10 +71,12 @@ function Dashboard() {
             activeContract.getMembers(i),
             activeContract.getCurrentPot(i),
           ])
+          console.log('Members:', members)
 
-          const isMember = (members || []).some(
-            (member) => member.toLowerCase() === account.toLowerCase()
+          const isMember = (members || []).some((m) =>
+            m.toLowerCase() === userEvmAddress.toLowerCase()
           )
+          console.log('Is member:', isMember)
 
           allGroups.push({
             id: Number(summary.groupId ?? i),
@@ -75,7 +92,8 @@ function Dashboard() {
           })
         }
 
-        return (allGroups || []).filter((group) => group.isMember)
+        const joinedGroups = allGroups.filter((g) => g.isMember)
+        return joinedGroups
       }, provider)
 
       const safeGroups = myGroups || []
