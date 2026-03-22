@@ -5,6 +5,10 @@ import useContract from '../hooks/useContract'
 
 function Profile() {
   const { account, connected } = useWalletContext()
+  const accountId = account
+  const safeAddress = accountId?.startsWith('0x')
+    ? accountId
+    : null
   const isConnected = connected
   const { getProvider, fetchContractData } = useContract()
   const [userProfile, setUserProfile] = useState({
@@ -58,7 +62,10 @@ function Profile() {
   const contractData = userProfile
 
   const refreshProfileData = useCallback(async () => {
-    if (!isConnected || !account) return
+    if (!isConnected || !safeAddress) {
+      console.log('Waiting for valid EVM address...')
+      return
+    }
 
     setRefreshing(true)
     setErrorMessage(null)
@@ -66,7 +73,7 @@ function Profile() {
       const provider = getProvider()
       const snapshot = await fetchContractData(async (activeContract) => {
         const [reputation, groupCount] = await Promise.all([
-          activeContract.getReputationScore(account),
+          activeContract.getReputationScore(safeAddress),
           activeContract.groupCounter(),
         ])
 
@@ -78,7 +85,7 @@ function Profile() {
 
       setUserProfile((currentProfile) => ({
         ...currentProfile,
-        address: account,
+        address: safeAddress,
         reputation: snapshot?.reputation ?? 0,
         totalCircles: snapshot?.totalCircles ?? 0,
       }))
@@ -88,7 +95,7 @@ function Profile() {
     } finally {
       setRefreshing(false)
     }
-  }, [isConnected, account, getProvider, fetchContractData])
+  }, [isConnected, safeAddress, getProvider, fetchContractData])
 
   useEffect(() => {
     if (!hasFetched && isConnected) {
@@ -118,6 +125,19 @@ function Profile() {
           <div className="text-center py-12">
             <h2 className="text-2xl font-bold text-white mb-4">Please Connect Your Wallet</h2>
             <p className="text-gray-400">You need to connect a wallet to view your profile.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!safeAddress) {
+    return (
+      <div className="min-h-screen pt-24 px-4 bg-black">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center py-12">
+            <h2 className="text-2xl font-bold text-white mb-4">Waiting For Valid EVM Address</h2>
+            <p className="text-gray-400">Reconnect your wallet to view on-chain profile details.</p>
           </div>
         </div>
       </div>

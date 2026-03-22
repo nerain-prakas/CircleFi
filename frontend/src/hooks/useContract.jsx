@@ -10,6 +10,12 @@ import { CONTRACT_ADDRESS, CIRCLEFI_ABI } from '../utils/constants'
 import { MIRROR_NODE_URL } from '../utils/hedera'
 import { useWalletContext } from '../context/WalletContext'
 
+const isValidEvmAddress = (address) => {
+  return typeof address === 'string' && 
+    address.startsWith('0x') && 
+    address.length === 42
+}
+
 const contractInitialized = { current: false }
 
 const HEDERA_NETWORK = ethers.Network.from({
@@ -183,6 +189,11 @@ export function useContract() {
 
     isCalling.current = true
     try {
+      if (functionName === 'getReputationScore' && !isValidEvmAddress(args?.[0])) {
+        console.warn('Skipping getReputationScore for invalid EVM address:', args?.[0])
+        return 0n
+      }
+
       return await fetchContractData(async (activeContract) => {
         if (typeof activeContract?.[functionName] !== 'function') {
           throw new Error(`Function ${functionName} is not available on contract`)
@@ -286,7 +297,28 @@ export function useContract() {
   }, [fetchContractData])
 
   const getReputationScore = useCallback(async (address) => {
-    return callFunction('getReputationScore', [address])
+    const validAddresses = [address].filter((addr) => isValidEvmAddress(addr))
+    if (validAddresses.length === 0) {
+      console.warn('Waiting for valid EVM address before getReputationScore call')
+      return 0n
+    }
+
+    try {
+      const results = await Promise.all(
+        validAddresses.map((addr) => {
+          if (!isValidEvmAddress(addr)) return null
+          return callFunction('getReputationScore', [addr])
+        })
+      )
+
+      return results?.[0] ?? 0n
+    } catch (err) {
+      if (err?.code === 'UNSUPPORTED_OPERATION') {
+        console.warn('ENS not supported on Hedera, skipping...')
+        return 0n
+      }
+      throw err
+    }
   }, [callFunction])
 
   const getGroupCount = useCallback(async () => {

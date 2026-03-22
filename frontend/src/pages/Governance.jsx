@@ -5,8 +5,10 @@ import useContract from '../hooks/useContract'
 
 function Governance() {
   const { account, connected } = useWalletContext()
+  const accountId = account
   const isConnected = connected
   const { getProvider, fetchContractData } = useContract()
+  const [evmAddress, setEvmAddress] = useState(null)
   const [proposals, setProposals] = useState([
     {
       id: 1,
@@ -52,8 +54,49 @@ function Governance() {
   const loading = refreshing
   const contractData = proposals
 
+  useEffect(() => {
+    if (!accountId) {
+      setEvmAddress(null)
+      return
+    }
+
+    if (accountId.startsWith('0x')) {
+      setEvmAddress(accountId)
+      return
+    }
+
+    let isMounted = true
+
+    const fetchEvmAddress = async () => {
+      try {
+        const response = await fetch(
+          `https://testnet.mirrornode.hedera.com/api/v1/accounts/${accountId}`
+        )
+        const data = await response.json()
+        if (isMounted) {
+          setEvmAddress(data.evm_address || null)
+        }
+        console.log('EVM address:', data.evm_address)
+      } catch (err) {
+        console.error('Failed to fetch EVM address:', err)
+        if (isMounted) {
+          setEvmAddress(null)
+        }
+      }
+    }
+
+    fetchEvmAddress()
+
+    return () => {
+      isMounted = false
+    }
+  }, [accountId])
+
   const refreshGovernanceData = useCallback(async () => {
-    if (!isConnected || !account) return
+    if (!isConnected || !evmAddress) {
+      console.log('Waiting for valid EVM address...')
+      return
+    }
 
     setRefreshing(true)
     setErrorMessage(null)
@@ -62,7 +105,7 @@ function Governance() {
       const snapshot = await fetchContractData(async (activeContract) => {
         const [groupCount, reputation] = await Promise.all([
           activeContract.groupCounter(),
-          activeContract.getReputationScore(account),
+          activeContract.getReputationScore(evmAddress),
         ])
 
         return {
@@ -78,7 +121,7 @@ function Governance() {
     } finally {
       setRefreshing(false)
     }
-  }, [isConnected, account, getProvider, fetchContractData])
+  }, [isConnected, evmAddress, getProvider, fetchContractData])
 
   useEffect(() => {
     if (!hasFetched && isConnected) {
@@ -108,6 +151,19 @@ function Governance() {
           <div className="text-center py-12">
             <h2 className="text-2xl font-bold text-white mb-4">Please Connect Your Wallet</h2>
             <p className="text-gray-400">You need to connect a wallet to participate in governance.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!evmAddress) {
+    return (
+      <div className="min-h-screen pt-24 px-4 bg-black">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center py-12">
+            <h2 className="text-2xl font-bold text-white mb-4">Loading</h2>
+            <p className="text-gray-400">Resolving EVM address from Hedera account...</p>
           </div>
         </div>
       </div>
@@ -273,7 +329,7 @@ function Governance() {
                 key={proposal.id}
                 proposal={proposal}
                 onVote={vote}
-                userAddress={account}
+                userAddress={evmAddress}
               />
             ))
           )}
