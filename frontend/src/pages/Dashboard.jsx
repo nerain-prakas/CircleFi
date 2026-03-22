@@ -142,7 +142,7 @@ function Dashboard() {
     try {
       const provider = getProvider()
       await initializeContract(provider)
-      const amount = formatEther(selectedGroup.monthlyContribution || '0')
+      const amount = selectedGroup.monthlyContribution || '0'
       await contribute(selectedGroup.id, amount)
       setActionMessage('Contribution submitted successfully.')
       await loadGroups()
@@ -158,7 +158,7 @@ function Dashboard() {
     try {
       const provider = getProvider()
       await initializeContract(provider)
-      const amount = formatEther(group.monthlyContribution || '0')
+      const amount = group.monthlyContribution || '0'
       await contribute(group.id, amount)
       setSelectedGroupId(group.id)
       setActionMessage('Contribution submitted successfully.')

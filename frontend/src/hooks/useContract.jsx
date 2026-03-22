@@ -12,6 +12,11 @@ import { useWalletContext } from '../context/WalletContext'
 
 const contractInitialized = { current: false }
 
+const HEDERA_TESTNET_NETWORK = {
+  chainId: 296,
+  name: 'hedera-testnet',
+}
+
 const getHederaContractId = async () => {
   try {
     const evmAddress = import.meta.env.VITE_CONTRACT_ADDRESS
@@ -52,6 +57,9 @@ export function useContract() {
     if (!address) {
       throw new Error('Contract address is missing. Set VITE_CONTRACT_ADDRESS and restart the frontend.')
     }
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+      throw new Error('VITE_CONTRACT_ADDRESS must be a full 0x-prefixed EVM address (not a Hedera 0.0.x ID).')
+    }
     return address
   }, [])
 
@@ -83,13 +91,17 @@ export function useContract() {
 
   const getReadProvider = useCallback(async () => {
     return new ethers.JsonRpcProvider(
-      import.meta.env.VITE_RPC_URL || 'https://testnet.hashio.io/api'
+      import.meta.env.VITE_RPC_URL || 'https://testnet.hashio.io/api',
+      HEDERA_TESTNET_NETWORK,
+      { staticNetwork: true }
     )
   }, [])
 
   const getProvider = useCallback(() => {
     return new ethers.JsonRpcProvider(
-      import.meta.env.VITE_RPC_URL || 'https://testnet.hashio.io/api'
+      import.meta.env.VITE_RPC_URL || 'https://testnet.hashio.io/api',
+      HEDERA_TESTNET_NETWORK,
+      { staticNetwork: true }
     )
   }, [])
 
@@ -97,18 +109,15 @@ export function useContract() {
     try {
       const provider = new ethers.JsonRpcProvider(
         import.meta.env.VITE_RPC_URL ||
-        'https://testnet.hashio.io/api'
+        'https://testnet.hashio.io/api',
+        HEDERA_TESTNET_NETWORK,
+        { staticNetwork: true }
       )
 
       console.log('Provider created, connecting to Hedera testnet...')
 
-      const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS
+      const contractAddress = getContractAddress()
       console.log('Contract address:', contractAddress)
-
-      if (!contractAddress) {
-        console.error('VITE_CONTRACT_ADDRESS is not set!')
-        return null
-      }
 
       const contract = new ethers.Contract(
         contractAddress,
@@ -125,7 +134,7 @@ export function useContract() {
       console.error('initializeContract failed:', err.message)
       return null
     }
-  }, [])
+  }, [getContractAddress])
 
   useEffect(() => {
     const run = async () => {
@@ -229,8 +238,16 @@ export function useContract() {
         .setGas(300000)
         .setFunction(functionName, params)
 
-      if (options && Number.isInteger(options.tinybars) && options.tinybars > 0) {
-        tx = tx.setPayableAmount(Hbar.fromTinybars(BigInt(options.tinybars)))
+      if (options && options.tinybars !== undefined && options.tinybars !== null) {
+        const tinybars = typeof options.tinybars === 'bigint'
+          ? options.tinybars
+          : BigInt(Math.floor(Number(options.tinybars)))
+
+        if (tinybars <= 0n) {
+          throw new Error('contributionAmount converts to invalid tinybar amount')
+        }
+
+        tx = tx.setPayableAmount(Hbar.fromTinybars(tinybars))
       }
 
       tx = await tx.freezeWithSigner(signer)
@@ -340,17 +357,38 @@ export function useContract() {
     return executeFunction('joinChitGroup', [groupId])
   }, [executeFunction])
 
-  const contribute = useCallback(async (groupId, amountHbar) => {
-    const contributionAmount = Number.parseFloat(String(amountHbar))
-    if (!Number.isFinite(contributionAmount) || contributionAmount <= 0) {
+  const contribute = useCallback(async (groupId, contributionAmount) => {
+    console.log('Contribution amount received:', contributionAmount)
+    console.log('Type:', typeof contributionAmount)
+
+    if (contributionAmount === undefined || contributionAmount === null) {
       throw new Error('contributionAmount must be a valid positive number')
     }
 
-    const tinybars = Math.floor(
-      parseFloat(contributionAmount) * 100_000_000
-    )
+    let tinybars
+    if (typeof contributionAmount === 'bigint') {
+      tinybars = contributionAmount
+    } else {
+      const amountAsString = String(contributionAmount).trim()
+      const isIntegerString = /^\d+$/.test(amountAsString)
 
-    if (!Number.isFinite(tinybars) || tinybars <= 0) {
+      if (isIntegerString) {
+        const integerAmount = BigInt(amountAsString)
+        if (integerAmount >= 100_000_000n) {
+          tinybars = integerAmount
+        } else {
+          tinybars = BigInt(Math.floor(Number(contributionAmount) * 100_000_000))
+        }
+      } else {
+        const numericAmount = Number(contributionAmount)
+        if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+          throw new Error('contributionAmount must be a valid positive number')
+        }
+        tinybars = BigInt(Math.floor(numericAmount * 100_000_000))
+      }
+    }
+
+    if (tinybars <= 0n) {
       throw new Error('contributionAmount converts to invalid tinybar amount')
     }
 
