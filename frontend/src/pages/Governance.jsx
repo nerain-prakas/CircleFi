@@ -7,8 +7,10 @@ function Governance() {
   const { account, connected } = useWalletContext()
   const accountId = account
   const isConnected = connected
-  const { getProvider, fetchContractData } = useContract()
+  const { getProvider, fetchContractData, createProposal } = useContract()
   const [evmAddress, setEvmAddress] = useState(null)
+  const [joinedGroups, setJoinedGroups] = useState([])
+  const [selectedGroupId, setSelectedGroupId] = useState('')
   const [proposals, setProposals] = useState([
     {
       id: 1,
@@ -47,6 +49,7 @@ function Governance() {
   const [showProposalForm, setShowProposalForm] = useState(false)
   const [newProposal, setNewProposal] = useState({ title: '', description: '' })
   const [refreshing, setRefreshing] = useState(false)
+  const [submittingProposal, setSubmittingProposal] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [errorMessage, setErrorMessage] = useState(null)
   const [chainSnapshot, setChainSnapshot] = useState({ groupCount: 0, reputation: '0' })
@@ -91,6 +94,57 @@ function Governance() {
       isMounted = false
     }
   }, [accountId])
+
+  const loadJoinedGroups = useCallback(async () => {
+    if (!isConnected || !evmAddress) {
+      setJoinedGroups([])
+      return
+    }
+
+    try {
+      const provider = getProvider()
+      const groups = await fetchContractData(async (activeContract) => {
+        const totalGroups = Number(await activeContract.groupCounter())
+        const myGroups = []
+
+        for (let i = 0; i < totalGroups; i += 1) {
+          const [group, members] = await Promise.all([
+            activeContract.chitGroups(i),
+            activeContract.getMembers(i),
+          ])
+
+          const isMember = (members || []).some(
+            (member) => member?.toLowerCase?.() === evmAddress.toLowerCase()
+          )
+
+          if (isMember) {
+            myGroups.push({
+              groupId: Number(group?.groupId ?? i),
+              groupName: group?.groupName || `Circle #${i}`,
+            })
+          }
+        }
+
+        return myGroups
+      }, provider)
+
+      const safeGroups = groups || []
+      setJoinedGroups(safeGroups)
+      setSelectedGroupId((current) => {
+        if (safeGroups.some((g) => String(g.groupId) === String(current))) {
+          return current
+        }
+        return safeGroups[0] ? String(safeGroups[0].groupId) : ''
+      })
+    } catch (err) {
+      console.error('Failed to load joined groups:', err)
+      setJoinedGroups([])
+    }
+  }, [isConnected, evmAddress, getProvider, fetchContractData])
+
+  useEffect(() => {
+    loadJoinedGroups()
+  }, [loadJoinedGroups])
 
   const refreshGovernanceData = useCallback(async () => {
     if (!isConnected || !evmAddress) {
@@ -144,7 +198,7 @@ function Governance() {
     )
   }
 
-  if (!isConnected) {
+  if (!evmAddress && !accountId) {
     return (
       <div className="min-h-screen pt-24 px-4 bg-black">
         <div className="max-w-4xl mx-auto">
@@ -157,11 +211,12 @@ function Governance() {
     )
   }
 
-  if (!evmAddress) {
+  if (!evmAddress && accountId) {
     return (
       <div className="min-h-screen pt-24 px-4 bg-black">
         <div className="max-w-4xl mx-auto">
           <div className="text-center py-12">
+            <div className="w-10 h-10 border-2 border-cyan-300 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-white mb-4">Loading</h2>
             <p className="text-gray-400">Resolving EVM address from Hedera account...</p>
           </div>
@@ -190,25 +245,44 @@ function Governance() {
   }
 
   const submitProposal = () => {
-    if (!newProposal.title.trim() || !newProposal.description.trim()) {
+    if (!newProposal.title.trim() || !newProposal.description.trim() || !selectedGroupId) {
       alert('Please fill in all fields')
       return
     }
 
-    const proposal = {
-      id: Math.max(...(proposals || []).map((p) => p.id), 0) + 1,
-      ...newProposal,
-      yesVotes: 1,
-      noVotes: 0,
-      ends: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      status: 'ACTIVE',
-      userVoted: true,
-      userVote: 'yes',
+    const submit = async () => {
+      setSubmittingProposal(true)
+      try {
+        await createProposal(Number(selectedGroupId), newProposal.description, {
+          proposalType: 0,
+          value: 0,
+          targetMember: '0x0000000000000000000000000000000000000000',
+          durationDays: 7,
+        })
+
+        const proposal = {
+          id: Math.max(...(proposals || []).map((p) => p.id), 0) + 1,
+          ...newProposal,
+          groupId: Number(selectedGroupId),
+          yesVotes: 1,
+          noVotes: 0,
+          ends: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          status: 'ACTIVE',
+          userVoted: true,
+          userVote: 'yes',
+        }
+
+        setProposals([proposal, ...(proposals || [])])
+        setNewProposal({ title: '', description: '' })
+        setShowProposalForm(false)
+      } catch (err) {
+        alert(err?.message || 'Failed to create proposal')
+      } finally {
+        setSubmittingProposal(false)
+      }
     }
 
-    setProposals([proposal, ...(proposals || [])])
-    setNewProposal({ title: '', description: '' })
-    setShowProposalForm(false)
+    submit()
   }
 
   const totalYesVotes = (proposals || []).reduce((sum, p) => sum + p.yesVotes, 0)
@@ -278,6 +352,24 @@ function Governance() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Select Circle
+                </label>
+                <select
+                  value={selectedGroupId}
+                  onChange={(e) => setSelectedGroupId(e.target.value)}
+                  className="w-full px-4 py-2 bg-gray-800 text-white rounded-lg border border-gray-700 focus:border-cyan-400 focus:outline-none"
+                >
+                  <option value="">Select a circle...</option>
+                  {joinedGroups.map((g) => (
+                    <option key={g.groupId} value={g.groupId}>
+                      {g.groupName || `Circle #${g.groupId}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
                   Proposal Title
                 </label>
                 <input
@@ -303,8 +395,12 @@ function Governance() {
               </div>
 
               <div className="flex gap-3">
-                <button onClick={submitProposal} className="flex-1 btn-primary">
-                  Submit Proposal
+                <button
+                  onClick={submitProposal}
+                  disabled={submittingProposal || !selectedGroupId}
+                  className="flex-1 btn-primary disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {submittingProposal ? 'Submitting...' : 'Submit Proposal'}
                 </button>
                 <button
                   onClick={() => setShowProposalForm(false)}

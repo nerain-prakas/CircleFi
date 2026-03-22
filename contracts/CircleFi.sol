@@ -39,8 +39,40 @@ contract CircleFi is ReentrancyGuard, Ownable, Pausable {
         uint256 revealedAmount;
     }
 
+    enum ProposalType {
+        CHANGE_CONTRIBUTION,
+        CHANGE_MEMBER_COUNT,
+        KICK_MEMBER,
+        CHANGE_PENALTY,
+        PAUSE_CIRCLE
+    }
+
+    enum ProposalStatus {
+        ACTIVE,
+        PASSED,
+        REJECTED,
+        EXECUTED
+    }
+
+    struct Proposal {
+        uint256 proposalId;
+        uint256 groupId;
+        address proposer;
+        ProposalType proposalType;
+        string description;
+        uint256 value;
+        address targetMember;
+        uint256 yesVotes;
+        uint256 noVotes;
+        uint256 deadline;
+        ProposalStatus status;
+        mapping(address => bool) hasVoted;
+    }
+
     // State variables
     mapping(uint256 => ChitGroup) public chitGroups;
+    mapping(uint256 => mapping(uint256 => Proposal)) public proposals;
+    mapping(uint256 => uint256) public proposalCounter;
     uint256 public groupCounter;
     uint256 public constant EXIT_PENALTY_BPS = 500; // 5% penalty on exit
     uint256 public constant MIN_REPUTATION_SCORE = 50; // Minimum score to join
@@ -63,6 +95,9 @@ contract CircleFi is ReentrancyGuard, Ownable, Pausable {
     event PotDistributed(uint256 indexed groupId, address indexed winner, uint256 amount);
     event DividendPaid(uint256 indexed groupId, address indexed member, uint256 amount);
     event ReputationUpdated(address indexed member, uint256 newScore);
+    event ProposalCreated(uint256 indexed groupId, uint256 indexed proposalId, address proposer, ProposalType proposalType);
+    event VoteCast(uint256 indexed groupId, uint256 indexed proposalId, address voter, bool support);
+    event ProposalExecuted(uint256 indexed groupId, uint256 indexed proposalId, ProposalStatus status);
 
     /**
      * @notice Constructor to initialize the contract and set owner
@@ -335,6 +370,150 @@ contract CircleFi is ReentrancyGuard, Ownable, Pausable {
      */
     function getReputationScore(address _member) external view returns (uint256) {
         return chitGroups[0].reputationScores[_member];
+    }
+
+    function createProposal(
+        uint256 _groupId,
+        ProposalType _proposalType,
+        string memory _description,
+        uint256 _value,
+        address _targetMember,
+        uint256 _durationDays
+    ) external whenNotPaused returns (uint256) {
+        ChitGroup storage group = chitGroups[_groupId];
+        require(group.isActive, "Group not active");
+        require(group.hasJoined[msg.sender], "Not a member");
+        require(_durationDays > 0 && _durationDays <= 30, "Invalid duration");
+
+        uint256 proposalId = proposalCounter[_groupId]++;
+        Proposal storage proposal = proposals[_groupId][proposalId];
+        proposal.proposalId = proposalId;
+        proposal.groupId = _groupId;
+        proposal.proposer = msg.sender;
+        proposal.proposalType = _proposalType;
+        proposal.description = _description;
+        proposal.value = _value;
+        proposal.targetMember = _targetMember;
+        proposal.yesVotes = 0;
+        proposal.noVotes = 0;
+        proposal.deadline = block.timestamp + (_durationDays * 1 days);
+        proposal.status = ProposalStatus.ACTIVE;
+
+        emit ProposalCreated(_groupId, proposalId, msg.sender, _proposalType);
+        return proposalId;
+    }
+
+    function vote(
+        uint256 _groupId,
+        uint256 _proposalId,
+        bool _support
+    ) external whenNotPaused nonReentrant {
+        ChitGroup storage group = chitGroups[_groupId];
+        require(group.hasJoined[msg.sender], "Not a member");
+
+        Proposal storage proposal = proposals[_groupId][_proposalId];
+        require(proposal.status == ProposalStatus.ACTIVE, "Proposal not active");
+        require(block.timestamp <= proposal.deadline, "Voting ended");
+        require(!proposal.hasVoted[msg.sender], "Already voted");
+
+        proposal.hasVoted[msg.sender] = true;
+        if (_support) {
+            proposal.yesVotes++;
+        } else {
+            proposal.noVotes++;
+        }
+
+        emit VoteCast(_groupId, _proposalId, msg.sender, _support);
+    }
+
+    function executeProposal(
+        uint256 _groupId,
+        uint256 _proposalId
+    ) external whenNotPaused nonReentrant {
+        ChitGroup storage group = chitGroups[_groupId];
+        require(group.hasJoined[msg.sender], "Not a member");
+
+        Proposal storage proposal = proposals[_groupId][_proposalId];
+        require(proposal.status == ProposalStatus.ACTIVE, "Not active");
+        require(block.timestamp > proposal.deadline, "Voting still active");
+
+        uint256 totalVotes = proposal.yesVotes + proposal.noVotes;
+        require(totalVotes > 0, "No votes cast");
+
+        bool passed = (proposal.yesVotes * 100) / totalVotes >= 66;
+
+        if (passed) {
+            proposal.status = ProposalStatus.PASSED;
+
+            if (proposal.proposalType == ProposalType.CHANGE_CONTRIBUTION) {
+                group.monthlyContribution = proposal.value;
+            } else if (proposal.proposalType == ProposalType.CHANGE_MEMBER_COUNT) {
+                group.memberCount = proposal.value;
+            } else if (proposal.proposalType == ProposalType.KICK_MEMBER) {
+                group.hasJoined[proposal.targetMember] = false;
+                for (uint i = 0; i < group.members.length; i++) {
+                    if (group.members[i] == proposal.targetMember) {
+                        group.members[i] = group.members[group.members.length - 1];
+                        group.members.pop();
+                        break;
+                    }
+                }
+            } else if (proposal.proposalType == ProposalType.CHANGE_PENALTY) {
+                // Note: EXIT_PENALTY_BPS is constant, skip for now
+            } else if (proposal.proposalType == ProposalType.PAUSE_CIRCLE) {
+                group.isActive = false;
+            }
+
+            proposal.status = ProposalStatus.EXECUTED;
+        } else {
+            proposal.status = ProposalStatus.REJECTED;
+        }
+
+        emit ProposalExecuted(_groupId, _proposalId, proposal.status);
+    }
+
+    function getProposal(
+        uint256 _groupId,
+        uint256 _proposalId
+    ) external view returns (
+        uint256 proposalId,
+        address proposer,
+        uint8 proposalType,
+        string memory description,
+        uint256 value,
+        address targetMember,
+        uint256 yesVotes,
+        uint256 noVotes,
+        uint256 deadline,
+        uint8 status
+    ) {
+        Proposal storage p = proposals[_groupId][_proposalId];
+        return (
+            p.proposalId,
+            p.proposer,
+            uint8(p.proposalType),
+            p.description,
+            p.value,
+            p.targetMember,
+            p.yesVotes,
+            p.noVotes,
+            p.deadline,
+            uint8(p.status)
+        );
+    }
+
+    function getProposalCount(
+        uint256 _groupId
+    ) external view returns (uint256) {
+        return proposalCounter[_groupId];
+    }
+
+    function hasVotedOnProposal(
+        uint256 _groupId,
+        uint256 _proposalId,
+        address _voter
+    ) external view returns (bool) {
+        return proposals[_groupId][_proposalId].hasVoted[_voter];
     }
 
     /**
