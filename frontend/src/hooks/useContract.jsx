@@ -12,10 +12,16 @@ import { useWalletContext } from '../context/WalletContext'
 
 const contractInitialized = { current: false }
 
-const HEDERA_TESTNET_NETWORK = {
+const HEDERA_NETWORK = ethers.Network.from({
   chainId: 296,
   name: 'hedera-testnet',
-}
+})
+
+const HEDERA_PROVIDER = new ethers.JsonRpcProvider(
+  'https://testnet.hashio.io/api',
+  HEDERA_NETWORK,
+  { staticNetwork: HEDERA_NETWORK }
+)
 
 const getHederaContractId = async () => {
   try {
@@ -90,29 +96,16 @@ export function useContract() {
   }, [getContractAddress, resolvedContractIds])
 
   const getReadProvider = useCallback(async () => {
-    return new ethers.JsonRpcProvider(
-      import.meta.env.VITE_RPC_URL || 'https://testnet.hashio.io/api',
-      HEDERA_TESTNET_NETWORK,
-      { staticNetwork: true }
-    )
+    return HEDERA_PROVIDER
   }, [])
 
   const getProvider = useCallback(() => {
-    return new ethers.JsonRpcProvider(
-      import.meta.env.VITE_RPC_URL || 'https://testnet.hashio.io/api',
-      HEDERA_TESTNET_NETWORK,
-      { staticNetwork: true }
-    )
+    return HEDERA_PROVIDER
   }, [])
 
   const initializeContract = useCallback(async () => {
     try {
-      const provider = new ethers.JsonRpcProvider(
-        import.meta.env.VITE_RPC_URL ||
-        'https://testnet.hashio.io/api',
-        HEDERA_TESTNET_NETWORK,
-        { staticNetwork: true }
-      )
+      const provider = HEDERA_PROVIDER
 
       console.log('Provider created, connecting to Hedera testnet...')
 
