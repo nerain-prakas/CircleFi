@@ -79,10 +79,23 @@ mcp.json
 .env.test.local
 .env.production.local
 .env.local
-.env.example
+
 # Private keys and certificates
 *.key
+# Hardhat
+artifacts/
+cache/
+typechain/
+typechain-types/
 
+# Deployment artifacts with sensitive info
+deployed.json
+
+# Build output
+frontend/dist/
+
+# Check scripts
+scripts/check.js
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
