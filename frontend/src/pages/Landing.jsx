@@ -38,7 +38,7 @@ function Landing() {
           {/* Hero Title */}
           <div className="space-y-4">
             <h1 className="text-5xl sm:text-6xl font-bold text-white leading-tight">
-              Circle<span className="text-cyan-400">Fi</span>
+              Sangam<span className="text-cyan-400">Fi</span>
             </h1>
             <p className="text-2xl sm:text-3xl text-gray-300 font-light">
               Rotating Credit, Reimagined
@@ -106,7 +106,7 @@ function Landing() {
       <div className="relative z-10 min-h-screen bg-gradient-to-b from-transparent to-black pt-20">
         <div className="max-w-4xl mx-auto px-4 py-20 space-y-12">
           <InfoSection
-            title="How CircleFi Works"
+            title="How SangamFi Works"
             items={[
               {
                 num: '01',

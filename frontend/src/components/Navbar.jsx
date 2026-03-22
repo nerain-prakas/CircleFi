@@ -19,7 +19,7 @@ function Navbar() {
           >
             <div className="w-8 h-8 rounded-full border-2 border-cyan-400 animate-spin-slow" />
             <span className="text-xl font-bold text-white">
-              Circle<span className="text-cyan-400">Fi</span>
+              Sangam<span className="text-cyan-400">Fi</span>
             </span>
           </div>
 

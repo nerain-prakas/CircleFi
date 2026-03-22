@@ -1,8 +1,8 @@
-# CircleFi Frontend - Setup and Build Guide
+# SangamFi Frontend - Setup and Build Guide
 
 ## ✅ What's Built
 
-The complete CircleFi frontend is ready with:
+The complete SangamFi frontend is ready with:
 
 ### Pages
 - ✅ **Landing.jsx** - Hero page with 3D background and wallet connection
@@ -246,7 +246,7 @@ For issues:
 
 ## 🎉 Ready to Deploy!
 
-Your CircleFi frontend is production-ready. All pages are functional with mock data that will automatically integrate with your backend contracts via ethers.js and HCS.
+Your SangamFi frontend is production-ready. All pages are functional with mock data that will automatically integrate with your backend contracts via ethers.js and HCS.
 
 Next steps:
 1. Deploy CircleFi.sol contract

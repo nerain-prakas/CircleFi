@@ -1,4 +1,4 @@
-# CircleFi 🔄
+# SangamFi 🔄
 
 > **Rotating Credit, Reimagined**
 >
@@ -6,7 +6,7 @@
 
 **No foreman. No fraud. No middlemen.**
 
-CircleFi enables communities to form rotating credit circles where members pool funds monthly, bid blindly for the pot via Hedera Consensus Service, and govern the protocol through on-chain voting. An AI risk agent monitors payment behavior and predicts defaults before they happen — keeping circles safe and sustainable.
+SangamFi enables communities to form rotating credit circles where members pool funds monthly, bid blindly for the pot via Hedera Consensus Service, and govern the protocol through on-chain voting. An AI risk agent monitors payment behavior and predicts defaults before they happen — keeping circles safe and sustainable.
 
 🏆 **Built for the Hedera Hello Future Apex Hackathon 2026**
 
@@ -339,12 +339,12 @@ This project is licensed under the **MIT License** - see [LICENSE](./LICENSE) fi
 
 ## 📝 Citation
 
-If you use CircleFi in your research or project, please cite:
+If you use SangamFi in your research or project, please cite:
 
 ```bibtex
-@misc{CircleFi2026,
-  title={CircleFi: Decentralized Rotating Credit on Hedera},
-  author={CircleFi Team},
+@misc{SangamFi2026,
+  title={SangamFi: Decentralized Rotating Credit on Hedera},
+  author={SangamFi Team},
   year={2026},
   url={https://github.com/yourusername/CircleFi}
 }

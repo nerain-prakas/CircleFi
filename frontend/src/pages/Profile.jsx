@@ -131,7 +131,7 @@ function Profile() {
         <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-4xl font-bold text-white mb-2">Profile</h1>
-            <p className="text-gray-400">Manage your CircleFi account and memberships</p>
+            <p className="text-gray-400">Manage your SangamFi account and memberships</p>
           </div>
           <RefreshControl
             onRefresh={() => {

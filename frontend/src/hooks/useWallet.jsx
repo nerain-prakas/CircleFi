@@ -25,7 +25,7 @@ export function useWallet() {
         const { DAppConnector } = await import('@hashgraph/hedera-wallet-connect')
         const dAppConnector = new DAppConnector(
           {
-            name: 'CircleFi',
+            name: 'SangamFi',
             description: 'Decentralized Rotating Credit Protocol',
             url: window.location.origin,
             icons: [window.location.origin + '/favicon.ico'],

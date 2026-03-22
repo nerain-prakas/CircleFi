@@ -2,10 +2,10 @@
  * Contract ABIs and Constants
  */
 
-// CircleFi Contract Address
+// SangamFi Contract Address
 export const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS
 
-// CircleFi Contract ABI
+// SangamFi Contract ABI
 export const CIRCLEFI_ABI = [
   {
     "inputs": [
