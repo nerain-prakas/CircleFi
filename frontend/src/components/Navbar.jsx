@@ -29,6 +29,7 @@ function Navbar() {
             <NavLink label="Groups" onClick={() => navigate('/groups')} />
             <NavLink label="Auction" onClick={() => navigate('/auction')} />
             <NavLink label="Governance" onClick={() => navigate('/governance')} />
+            <NavLink label="Assistant" onClick={() => navigate('/assistant')} />
             <NavLink label="Profile" onClick={() => navigate('/profile')} />
           </div>
 
@@ -100,6 +101,7 @@ function MobileNavigation() {
         <MobileNavItem label="Groups" href="/groups" />
         <MobileNavItem label="Auction" href="/auction" />
         <MobileNavItem label="Governance" href="/governance" />
+        <MobileNavItem label="Assistant" href="/assistant" />
         <MobileNavItem label="Profile" href="/profile" />
       </div>
     </div>

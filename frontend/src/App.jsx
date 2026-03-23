@@ -7,6 +7,7 @@ import Auction from './pages/Auction'
 import Governance from './pages/Governance'
 import Profile from './pages/Profile'
 import Groups from './pages/Groups'
+import Assistant from './pages/Assistant'
 import { WalletProvider } from './context/WalletContext'
 import './index.css'
 
@@ -36,6 +37,7 @@ function App() {
                       <Route path="/groups" element={<Groups />} />
                       <Route path="/auction" element={<Auction />} />
                       <Route path="/governance" element={<Governance />} />
+                      <Route path="/assistant" element={<Assistant />} />
                       <Route path="/profile" element={<Profile />} />
                     </Routes>
                   </main>
