@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "D:\\codes\\hedera\\CircleFi\\contracts\\CircleFi.sol": {
-      "lastModificationDate": 1774004979965,
-      "contentHash": "0651ba8c10e364ca83409aa6092a8915",
+      "lastModificationDate": 1774178262899,
+      "contentHash": "fa9c300974da262e3999a9605ee6c349",
       "sourceName": "contracts/CircleFi.sol",
       "solcConfig": {
         "version": "0.8.20",

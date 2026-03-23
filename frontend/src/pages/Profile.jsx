@@ -6,9 +6,7 @@ import useContract from '../hooks/useContract'
 function Profile() {
   const { account, connected } = useWalletContext()
   const accountId = account
-  const safeAddress = accountId?.startsWith('0x')
-    ? accountId
-    : null
+  const [evmAddress, setEvmAddress] = useState(null)
   const isConnected = connected
   const { getProvider, fetchContractData } = useContract()
   const [userProfile, setUserProfile] = useState({
@@ -61,8 +59,25 @@ function Profile() {
   const loading = refreshing
   const contractData = userProfile
 
+  useEffect(() => {
+    if (!accountId) {
+      setEvmAddress(null)
+      return
+    }
+
+    if (accountId.startsWith('0x')) {
+      setEvmAddress(accountId)
+      return
+    }
+
+    fetch(`https://testnet.mirrornode.hedera.com/api/v1/accounts/${accountId}`)
+      .then((r) => r.json())
+      .then((d) => setEvmAddress(d.evm_address || null))
+      .catch(() => setEvmAddress(null))
+  }, [accountId])
+
   const refreshProfileData = useCallback(async () => {
-    if (!isConnected || !safeAddress) {
+    if (!isConnected || !evmAddress) {
       console.log('Waiting for valid EVM address...')
       return
     }
@@ -73,7 +88,7 @@ function Profile() {
       const provider = getProvider()
       const snapshot = await fetchContractData(async (activeContract) => {
         const [reputation, groupCount] = await Promise.all([
-          activeContract.getReputationScore(safeAddress),
+          activeContract.getReputationScore(evmAddress),
           activeContract.groupCounter(),
         ])
 
@@ -85,7 +100,7 @@ function Profile() {
 
       setUserProfile((currentProfile) => ({
         ...currentProfile,
-        address: safeAddress,
+        address: evmAddress,
         reputation: snapshot?.reputation ?? 0,
         totalCircles: snapshot?.totalCircles ?? 0,
       }))
@@ -95,7 +110,7 @@ function Profile() {
     } finally {
       setRefreshing(false)
     }
-  }, [isConnected, safeAddress, getProvider, fetchContractData])
+  }, [isConnected, evmAddress, getProvider, fetchContractData])
 
   useEffect(() => {
     if (!hasFetched && isConnected) {
@@ -118,7 +133,7 @@ function Profile() {
     )
   }
 
-  if (!isConnected) {
+  if (!accountId) {
     return (
       <div className="min-h-screen pt-24 px-4 bg-black">
         <div className="max-w-4xl mx-auto">
@@ -131,13 +146,13 @@ function Profile() {
     )
   }
 
-  if (!safeAddress) {
+  if (!evmAddress) {
     return (
       <div className="min-h-screen pt-24 px-4 bg-black">
         <div className="max-w-4xl mx-auto">
           <div className="text-center py-12">
-            <h2 className="text-2xl font-bold text-white mb-4">Waiting For Valid EVM Address</h2>
-            <p className="text-gray-400">Reconnect your wallet to view on-chain profile details.</p>
+            <h2 className="text-2xl font-bold text-white mb-4">Loading profile...</h2>
+            <p className="text-gray-400">Resolving EVM address from Hedera account...</p>
           </div>
         </div>
       </div>

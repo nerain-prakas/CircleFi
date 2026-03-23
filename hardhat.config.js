@@ -12,9 +12,9 @@ module.exports = {
       accounts: [
         process.env.HEDERA_PRIVATE_KEY !== undefined ? process.env.HEDERA_PRIVATE_KEY : ""
       ],
-      chainId: 296, // Hedera Testnet chain ID
-      gas: 300000,
-      gasPrice: 960000000000, // Hedera testnet minimum gas price in wei
+  chainId: 296,
+  gas: 500000,
+  gasPrice: 1000000000000,// Hedera testnet minimum gas price in wei
     },
   },
   

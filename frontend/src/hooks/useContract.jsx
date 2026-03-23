@@ -215,6 +215,13 @@ export function useContract() {
       const params = new ContractFunctionParameters()
       if (functionName === 'joinChitGroup' || functionName === 'exitGroup' || functionName === 'contribute') {
         params.addUint256(String(args[0]))
+      } else if (functionName === 'createProposal') {
+        params.addUint256(String(args[0]))
+        params.addUint8(Number(args[1]))
+        params.addString(String(args[2] ?? ''))
+        params.addUint256(String(args[3] ?? 0))
+        params.addAddress(String(args[4] ?? '0x0000000000000000000000000000000000000000'))
+        params.addUint256(String(args[5] ?? 7))
       } else if (functionName === 'submitBid') {
         const bidHash = String(args[1] ?? '')
         const hashHex = bidHash.startsWith('0x') ? bidHash.slice(2) : bidHash
@@ -426,6 +433,22 @@ export function useContract() {
     return executeFunction('submitBid', [groupId, sealedBidHash])
   }, [executeFunction])
 
+  const createProposal = useCallback(async (groupId, description, options = {}) => {
+    const proposalType = options.proposalType ?? 0
+    const value = options.value ?? 0
+    const targetMember = options.targetMember ?? '0x0000000000000000000000000000000000000000'
+    const durationDays = options.durationDays ?? 7
+
+    return executeFunction('createProposal', [
+      groupId,
+      proposalType,
+      description,
+      value,
+      targetMember,
+      durationDays,
+    ])
+  }, [executeFunction])
+
   const revealBid = useCallback(async (groupId, amount, salt) => {
     return executeFunction('revealBid', [groupId, amount, salt])
   }, [executeFunction])
@@ -464,6 +487,7 @@ export function useContract() {
     getCurrentPot,
     joinGroup,
     contribute,
+    createProposal,
     submitBid,
     revealBid,
     vote,
