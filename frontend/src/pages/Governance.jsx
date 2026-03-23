@@ -7,48 +7,15 @@ function Governance() {
   const { account, connected } = useWalletContext()
   const accountId = account
   const isConnected = connected
-  const { getProvider, fetchContractData, createProposal } = useContract()
+  const { getProvider, fetchContractData, createProposal, executeFunction, readContract } = useContract()
   const [evmAddress, setEvmAddress] = useState(null)
   const [joinedGroups, setJoinedGroups] = useState([])
   const [selectedGroupId, setSelectedGroupId] = useState('')
-  const [proposals, setProposals] = useState([
-    {
-      id: 1,
-      title: 'Increase minimum reputation score to 70',
-      description: 'Proposal to raise the minimum reputation score from 50 to 70 to improve circle quality and reduce default risk.',
-      yesVotes: 42,
-      noVotes: 8,
-      ends: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-      status: 'ACTIVE',
-      userVoted: false,
-      userVote: null,
-    },
-    {
-      id: 2,
-      title: 'Add new circle size option (15 members)',
-      description: 'Allow circles to have up to 15 members instead of the current limit of 10 to provide more flexibility.',
-      yesVotes: 35,
-      noVotes: 15,
-      ends: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      status: 'ACTIVE',
-      userVoted: false,
-      userVote: null,
-    },
-    {
-      id: 3,
-      title: 'Reduce auction phase duration to 2 days',
-      description: 'Shorten the sealed bid auction phase from 3 days to 2 days to enable faster payout cycles.',
-      yesVotes: 50,
-      noVotes: 5,
-      ends: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-      status: 'EXECUTED',
-      userVoted: true,
-      userVote: 'yes',
-    },
-  ])
+  const [proposals, setProposals] = useState([])
   const [showProposalForm, setShowProposalForm] = useState(false)
   const [newProposal, setNewProposal] = useState({ title: '', description: '' })
   const [refreshing, setRefreshing] = useState(false)
+  const [loadingProposals, setLoadingProposals] = useState(false)
   const [submittingProposal, setSubmittingProposal] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [errorMessage, setErrorMessage] = useState(null)
@@ -56,6 +23,29 @@ function Governance() {
   const [hasFetched, setHasFetched] = useState(false)
   const loading = refreshing
   const contractData = proposals
+
+  const normalizeProposalStatus = useCallback((rawStatus, deadlineDate) => {
+    const numericStatus = Number(rawStatus)
+    if (numericStatus === 0) {
+      return deadlineDate > new Date() ? 'ACTIVE' : 'ENDED'
+    }
+    if (numericStatus === 1) {
+      return 'EXECUTED'
+    }
+    return 'ENDED'
+  }, [])
+
+  const getProposalTypeLabel = useCallback((proposalType) => {
+    const numericType = Number(proposalType)
+    const labels = {
+      0: 'General',
+      1: 'Membership',
+      2: 'Contribution',
+      3: 'Payout',
+      4: 'Auction',
+    }
+    return labels[numericType] || `Type ${numericType}`
+  }, [])
 
   useEffect(() => {
     if (!accountId) {
@@ -146,6 +136,68 @@ function Governance() {
     loadJoinedGroups()
   }, [loadJoinedGroups])
 
+  const fetchProposals = useCallback(async () => {
+    if (!readContract || !isConnected || !evmAddress || (joinedGroups || []).length === 0) {
+      setProposals([])
+      setLoadingProposals(false)
+      return
+    }
+
+    setLoadingProposals(true)
+    try {
+      const allProposals = []
+
+      for (const group of joinedGroups) {
+        try {
+          const count = await readContract.getProposalCount(group.groupId)
+          for (let i = 0; i < Number(count); i += 1) {
+            const p = await readContract.getProposal(group.groupId, i)
+            const deadlineSeconds = Number(p?.[8] ?? 0)
+            const deadlineDate = Number.isFinite(deadlineSeconds)
+              ? new Date(deadlineSeconds * 1000)
+              : new Date(Date.now())
+
+            allProposals.push({
+              id: p?.[0]?.toString?.() ?? `${group.groupId}-${i}`,
+              proposalId: p?.[0]?.toString?.() ?? `${i}`,
+              groupId: group.groupId,
+              groupName: group.groupName,
+              proposer: p?.[1] ?? '',
+              proposalType: Number(p?.[2] ?? 0),
+              title: p?.[3] || `${getProposalTypeLabel(p?.[2] ?? 0)} Proposal`,
+              description: p?.[3] ?? '',
+              value: p?.[4]?.toString?.() ?? '0',
+              yesVotes: Number(p?.[6] ?? 0),
+              noVotes: Number(p?.[7] ?? 0),
+              deadline: Number(p?.[8] ?? 0),
+              ends: deadlineDate,
+              status: normalizeProposalStatus(p?.[9] ?? 0, deadlineDate),
+              userVoted: false,
+              userVote: null,
+            })
+          }
+        } catch (err) {
+          console.error('Error fetching proposals for group', group.groupId, err)
+        }
+      }
+
+      setProposals(allProposals.sort((a, b) => b.ends - a.ends))
+    } catch (err) {
+      console.error('Failed to fetch proposals:', err)
+      setErrorMessage(err?.message || 'Failed to fetch proposals')
+      setProposals([])
+    } finally {
+      setLoadingProposals(false)
+    }
+  }, [
+    readContract,
+    isConnected,
+    evmAddress,
+    joinedGroups,
+    normalizeProposalStatus,
+    getProposalTypeLabel,
+  ])
+
   const refreshGovernanceData = useCallback(async () => {
     if (!isConnected || !evmAddress) {
       console.log('Waiting for valid EVM address...')
@@ -169,13 +221,14 @@ function Governance() {
       }, provider)
 
       setChainSnapshot(snapshot || { groupCount: 0, reputation: '0' })
+      await fetchProposals()
       setLastUpdated(new Date())
     } catch (err) {
       setErrorMessage(err.message || 'Failed to refresh governance data')
     } finally {
       setRefreshing(false)
     }
-  }, [isConnected, evmAddress, getProvider, fetchContractData])
+  }, [isConnected, evmAddress, getProvider, fetchContractData, fetchProposals])
 
   useEffect(() => {
     if (!hasFetched && isConnected) {
@@ -183,6 +236,14 @@ function Governance() {
       refreshGovernanceData()
     }
   }, [hasFetched, isConnected, refreshGovernanceData])
+
+  useEffect(() => {
+    if (!isConnected) {
+      return
+    }
+
+    fetchProposals()
+  }, [isConnected, joinedGroups, fetchProposals])
 
   useEffect(() => {
     if (!isConnected) {
@@ -225,23 +286,13 @@ function Governance() {
     )
   }
 
-  const vote = (proposalId, voteType) => {
-    setProposals(
-      (proposals || []).map((p) => {
-        if (p.id === proposalId) {
-          const yesVotes = voteType === 'yes' ? p.yesVotes + 1 : p.yesVotes
-          const noVotes = voteType === 'no' ? p.noVotes + 1 : p.noVotes
-          return {
-            ...p,
-            yesVotes,
-            noVotes,
-            userVoted: true,
-            userVote: voteType,
-          }
-        }
-        return p
-      })
-    )
+  const handleVote = async (groupId, proposalId, support) => {
+    try {
+      await executeFunction('vote', [groupId, proposalId, support])
+      await fetchProposals()
+    } catch (err) {
+      alert(err?.message || 'Vote failed')
+    }
   }
 
   const submitProposal = () => {
@@ -260,19 +311,7 @@ function Governance() {
           durationDays: 7,
         })
 
-        const proposal = {
-          id: Math.max(...(proposals || []).map((p) => p.id), 0) + 1,
-          ...newProposal,
-          groupId: Number(selectedGroupId),
-          yesVotes: 1,
-          noVotes: 0,
-          ends: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          status: 'ACTIVE',
-          userVoted: true,
-          userVote: 'yes',
-        }
-
-        setProposals([proposal, ...(proposals || [])])
+        await fetchProposals()
         setNewProposal({ title: '', description: '' })
         setShowProposalForm(false)
       } catch (err) {
@@ -299,9 +338,7 @@ function Governance() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <RefreshControl
-              onRefresh={() => {
-                setHasFetched(false)
-              }}
+              onRefresh={refreshGovernanceData}
               refreshing={refreshing}
               lastUpdated={lastUpdated}
             />
@@ -415,16 +452,23 @@ function Governance() {
 
         {/* Proposals */}
         <div className="space-y-6">
+          {loadingProposals && (
+            <div className="inline-flex items-center gap-2 text-xs text-cyan-300">
+              <div className="w-3 h-3 border-2 border-cyan-300 border-t-transparent rounded-full animate-spin" />
+              <span>Loading proposals from contract...</span>
+            </div>
+          )}
+
           {(proposals || []).length === 0 ? (
             <div className="text-center py-12 text-gray-400">
-              <p>No proposals yet. Be the first to create one!</p>
+              <p>{loadingProposals ? 'Loading proposals...' : 'No proposals yet. Be the first to create one!'}</p>
             </div>
           ) : (
             (proposals || []).map((proposal) => (
               <ProposalCard
                 key={proposal.id}
                 proposal={proposal}
-                onVote={vote}
+                onVote={handleVote}
                 userAddress={evmAddress}
               />
             ))
@@ -445,8 +489,8 @@ function ProposalCard({ proposal, onVote, userAddress }) {
       {/* Header */}
       <div className="mb-4 flex items-start justify-between">
         <div className="flex-1">
-          <h3 className="text-xl font-bold text-white mb-2">{proposal.title}</h3>
-          <p className="text-gray-400 text-sm">{proposal.description}</p>
+          <h3 className="text-xl font-bold text-white mb-2">{proposal.description || proposal.title}</h3>
+          <p className="text-gray-400 text-sm">{proposal.title}</p>
         </div>
         <div className="ml-4">
           <span
@@ -522,13 +566,13 @@ function ProposalCard({ proposal, onVote, userAddress }) {
       {!isEnded && !proposal.userVoted && (
         <div className="flex gap-3">
           <button
-            onClick={() => onVote(proposal.id, 'yes')}
+            onClick={() => onVote(proposal.groupId, proposal.proposalId, true)}
             className="flex-1 px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-semibold hover:from-green-600 hover:to-emerald-600 transition-all"
           >
             👍 Vote Yes
           </button>
           <button
-            onClick={() => onVote(proposal.id, 'no')}
+            onClick={() => onVote(proposal.groupId, proposal.proposalId, false)}
             className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-lg font-semibold hover:from-red-600 hover:to-pink-600 transition-all"
           >
             👎 Vote No

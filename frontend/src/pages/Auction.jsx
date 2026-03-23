@@ -43,7 +43,87 @@ function Auction() {
   const [lastUpdated, setLastUpdated] = useState(null)
   const [errorMessage, setErrorMessage] = useState(null)
   const [hasFetched, setHasFetched] = useState(false)
+  const [loadingBidHistory, setLoadingBidHistory] = useState(false)
+  const [revealKeyInputBidId, setRevealKeyInputBidId] = useState(null)
+  const [manualRevealKey, setManualRevealKey] = useState('')
   const contractData = groups
+
+  const getStorageKeyForAuction = useCallback((groupId, month) => {
+    if (groupId === null || groupId === undefined || month === null || month === undefined) {
+      return null
+    }
+    return `sangamfi_bid_key_${groupId}_${month}`
+  }, [])
+
+  const getCurrentAuctionStorageKey = useCallback(() => {
+    return getStorageKeyForAuction(selectedGroupId, selectedGroup?.currentMonth)
+  }, [getStorageKeyForAuction, selectedGroupId, selectedGroup])
+
+  const fetchBidHistory = useCallback(async (groupId) => {
+    if (groupId === null || groupId === undefined) {
+      setBidHistory([])
+      setLoadingBidHistory(false)
+      return
+    }
+
+    setLoadingBidHistory(true)
+    try {
+      const topicId = import.meta.env.VITE_HCS_TOPIC_ID || HCS_TOPIC_ID
+      const mirrorNodeUrl = import.meta.env.VITE_MIRROR_NODE_URL
+
+      if (!topicId || !mirrorNodeUrl) {
+        setBidHistory([])
+        return
+      }
+
+      const response = await fetch(
+        `${mirrorNodeUrl}/topics/${topicId}/messages?limit=100`
+      )
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch bid history: ${response.status}`)
+      }
+
+      const data = await response.json()
+      const bids = (data.messages || [])
+        .filter((msg) => {
+          try {
+            const decoded = atob(msg.message)
+            const parsed = JSON.parse(decoded)
+            return Number(parsed.groupId) === Number(groupId)
+          } catch {
+            return false
+          }
+        })
+        .map((msg, index) => {
+          const decoded = JSON.parse(atob(msg.message))
+          const timestampSeconds = Number(msg.consensus_timestamp || 0)
+          const timestamp = Number.isFinite(timestampSeconds)
+            ? new Date(timestampSeconds * 1000)
+            : new Date()
+
+          return {
+            id: `${msg.consensus_timestamp || '0'}-${index}`,
+            hash: decoded.encryptedBid || decoded.sealedBidHash || '',
+            encrypted: decoded.encryptedBid || '',
+            timestamp,
+            status: 'SEALED',
+            phase: 'SEALED',
+            submitted: true,
+            groupId: Number(groupId),
+            currentMonth: Number(decoded.currentMonth ?? selectedGroup?.currentMonth ?? 0),
+          }
+        })
+
+      setBidHistory(bids)
+    } catch (err) {
+      console.error('Failed to load bid history from HCS:', err)
+      setBidHistory([])
+    } finally {
+      setLoadingBidHistory(false)
+    }
+  }, [selectedGroup?.currentMonth])
+
   const refreshAuctionData = useCallback(async () => {
     if (!isConnected || !account) {
       setGroups([])
@@ -126,6 +206,31 @@ function Auction() {
     setPotSize(nextSelectedGroup?.pot ?? '0')
   }, [selectedGroupId, groups])
 
+  useEffect(() => {
+    const storageKey = getCurrentAuctionStorageKey()
+    if (!storageKey) {
+      setEncryptionKey(null)
+      return
+    }
+
+    const savedKey = localStorage.getItem(storageKey)
+    setEncryptionKey(savedKey || null)
+  }, [getCurrentAuctionStorageKey])
+
+  useEffect(() => {
+    if (!isConnected) {
+      setBidHistory([])
+      return
+    }
+
+    if (selectedGroupId === null || selectedGroupId === undefined) {
+      setBidHistory([])
+      return
+    }
+
+    fetchBidHistory(selectedGroupId)
+  }, [isConnected, selectedGroupId, fetchBidHistory])
+
   if (!contractData && refreshing) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -148,8 +253,23 @@ function Auction() {
   }
 
   const generateKey = () => {
+    const storageKey = getCurrentAuctionStorageKey()
+    if (!storageKey) {
+      alert('Select a circle before generating a key')
+      return
+    }
+
+    const existingKey = localStorage.getItem(storageKey)
+    if (existingKey) {
+      setEncryptionKey(existingKey)
+      alert('A key already exists for this circle and month. Reusing saved key.')
+      return
+    }
+
     const key = Math.random().toString(36).substring(2, 15)
+    localStorage.setItem(storageKey, key)
     setEncryptionKey(key)
+    alert(`Save this key!\n\n${key}`)
   }
 
   const handleEncryptBid = () => {
@@ -196,23 +316,11 @@ function Auction() {
         throw new Error('VITE_HCS_TOPIC_ID is not set for HCS submission')
       }
 
-      setBidHistory((previousBidHistory) => [
-        {
-          id: (previousBidHistory || []).length + 1,
-          hash: sealedBidHash,
-          amount: bidAmount,
-          encrypted: encryptedBid,
-          timestamp: new Date(),
-          phase: 'SEALED',
-          status: 'Submitted',
-        },
-        ...(previousBidHistory || []),
-      ])
-
       setSubmitted(true)
       setBidAmount('')
       setEncryptedBid(null)
-      setEncryptionKey(null)
+
+      await fetchBidHistory(selectedGroupId)
 
       // Reset after 3 seconds
       setTimeout(() => setSubmitted(false), 3000)
@@ -225,11 +333,45 @@ function Auction() {
 
   const handleRevealBid = (bid) => {
     try {
-      const key = prompt('Enter your encryption key to reveal:')
-      if (!key) return
+      const bidGroupId = bid.groupId ?? selectedGroupId
+      const bidMonth = bid.currentMonth ?? selectedGroup?.currentMonth
+      const storageKey = getStorageKeyForAuction(bidGroupId, bidMonth)
+      const savedKey = storageKey ? localStorage.getItem(storageKey) : null
 
-      const decrypted = decryptBid(bid.encrypted, key)
+      if (savedKey) {
+        const decrypted = decryptBid(bid.encrypted, savedKey)
+        alert(`Bid amount: ${decrypted} HBAR`)
+        return
+      }
+
+      setRevealKeyInputBidId(bid.id)
+      setManualRevealKey('')
+    } catch {
+      alert('Failed to decrypt with saved key. Enter key manually.')
+      setRevealKeyInputBidId(bid.id)
+      setManualRevealKey('')
+    }
+  }
+
+  const handleManualReveal = (bid) => {
+    try {
+      if (!manualRevealKey) {
+        alert('Enter encryption key to reveal')
+        return
+      }
+
+      const decrypted = decryptBid(bid.encrypted, manualRevealKey)
       alert(`Bid amount: ${decrypted} HBAR`)
+
+      const bidGroupId = bid.groupId ?? selectedGroupId
+      const bidMonth = bid.currentMonth ?? selectedGroup?.currentMonth
+      const storageKey = getStorageKeyForAuction(bidGroupId, bidMonth)
+      if (storageKey) {
+        localStorage.setItem(storageKey, manualRevealKey)
+      }
+
+      setRevealKeyInputBidId(null)
+      setManualRevealKey('')
     } catch (err) {
       alert('Failed to decrypt: Invalid key or corrupted data')
     }
@@ -335,7 +477,7 @@ function Auction() {
                   </label>
                   {encryptionKey ? (
                     <div className="p-3 bg-cyan-900 bg-opacity-20 border border-cyan-600 border-opacity-30 rounded-lg">
-                      <p className="text-xs text-gray-400 mb-2">Your encryption key (save securely):</p>
+                      <p className="text-xs text-amber-300 mb-2">Save this key!</p>
                       <p className="text-sm font-mono text-cyan-400 break-all mb-3">{encryptionKey}</p>
                       <button
                         onClick={() => {
@@ -448,11 +590,19 @@ function Auction() {
 
             {/* Bid History */}
             <div className="bg-gradient-to-br from-gray-900 from-opacity-40 to-black to-opacity-10 rounded-lg p-6 border border-gray-700 border-opacity-30">
-              <h3 className="text-xl font-bold text-white mb-4">Bid History</h3>
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-xl font-bold text-white">Bid History</h3>
+                {loadingBidHistory && (
+                  <div className="inline-flex items-center gap-2 text-xs text-cyan-300">
+                    <div className="w-3 h-3 border-2 border-cyan-300 border-t-transparent rounded-full animate-spin" />
+                    <span>Loading from HCS...</span>
+                  </div>
+                )}
+              </div>
 
               {(bidHistory || []).length === 0 ? (
                 <div className="text-center py-8 text-gray-400">
-                  <p>No bids submitted yet for this auction</p>
+                  <p>{loadingBidHistory ? 'Loading bid history...' : 'No bids submitted yet for this auction'}</p>
                 </div>
               ) : (
                 <div className="space-y-3 max-h-96 overflow-y-auto">
@@ -497,6 +647,38 @@ function Auction() {
                           Copy Hash
                         </button>
                       </div>
+
+                      {revealKeyInputBidId === bid.id && (
+                        <div className="mt-3 p-3 bg-gray-900 border border-gray-700 rounded-lg">
+                          <p className="text-xs text-gray-400 mb-2">
+                            No saved key found for this circle/month. Enter your key:
+                          </p>
+                          <input
+                            type="text"
+                            value={manualRevealKey}
+                            onChange={(event) => setManualRevealKey(event.target.value)}
+                            placeholder="Enter encryption key"
+                            className="w-full px-3 py-2 mb-2 bg-gray-800 text-white rounded border border-gray-700 focus:border-cyan-400 focus:outline-none"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleManualReveal(bid)}
+                              className="flex-1 px-3 py-2 text-xs bg-cyan-600 hover:bg-cyan-700 text-white rounded transition-colors"
+                            >
+                              Reveal with Entered Key
+                            </button>
+                            <button
+                              onClick={() => {
+                                setRevealKeyInputBidId(null)
+                                setManualRevealKey('')
+                              }}
+                              className="px-3 py-2 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 rounded transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
