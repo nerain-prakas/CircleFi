@@ -239,7 +239,8 @@ export function useContract() {
         params.addBytes32(args[2])
       } else if (functionName === 'vote') {
         params.addUint256(String(args[0]))
-        params.addBool(Boolean(args[1]))
+        params.addUint256(String(args[1]))
+        params.addBool(Boolean(args[2]))
       } else {
         throw new Error(`Unsupported write function: ${functionName}`)
       }
@@ -453,8 +454,8 @@ export function useContract() {
     return executeFunction('revealBid', [groupId, amount, salt])
   }, [executeFunction])
 
-  const vote = useCallback(async (proposalId, support) => {
-    return executeFunction('vote', [proposalId, support])
+  const vote = useCallback(async (groupId, proposalId, support) => {
+    return executeFunction('vote', [groupId, proposalId, support])
   }, [executeFunction])
 
   const exitGroup = useCallback(async (groupId) => {

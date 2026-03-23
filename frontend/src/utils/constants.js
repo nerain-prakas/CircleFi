@@ -109,6 +109,80 @@ export const CIRCLEFI_ABI = [
     "stateMutability": "view",
     "type": "function",
   },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "_groupId", "type": "uint256" }],
+    "name": "getProposalCount",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function",
+  },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "_groupId", "type": "uint256" },
+      { "internalType": "uint256", "name": "_proposalId", "type": "uint256" },
+    ],
+    "name": "getProposal",
+    "outputs": [
+      { "internalType": "uint256", "name": "proposalId", "type": "uint256" },
+      { "internalType": "address", "name": "proposer", "type": "address" },
+      { "internalType": "uint8", "name": "proposalType", "type": "uint8" },
+      { "internalType": "string", "name": "description", "type": "string" },
+      { "internalType": "uint256", "name": "value", "type": "uint256" },
+      { "internalType": "address", "name": "targetMember", "type": "address" },
+      { "internalType": "uint256", "name": "yesVotes", "type": "uint256" },
+      { "internalType": "uint256", "name": "noVotes", "type": "uint256" },
+      { "internalType": "uint256", "name": "deadline", "type": "uint256" },
+      { "internalType": "uint8", "name": "status", "type": "uint8" },
+    ],
+    "stateMutability": "view",
+    "type": "function",
+  },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "_groupId", "type": "uint256" },
+      { "internalType": "uint8", "name": "_proposalType", "type": "uint8" },
+      { "internalType": "string", "name": "_description", "type": "string" },
+      { "internalType": "uint256", "name": "_value", "type": "uint256" },
+      { "internalType": "address", "name": "_targetMember", "type": "address" },
+      { "internalType": "uint256", "name": "_durationDays", "type": "uint256" },
+    ],
+    "name": "createProposal",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "nonpayable",
+    "type": "function",
+  },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "_groupId", "type": "uint256" },
+      { "internalType": "uint256", "name": "_proposalId", "type": "uint256" },
+      { "internalType": "bool", "name": "_support", "type": "bool" },
+    ],
+    "name": "vote",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function",
+  },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "_groupId", "type": "uint256" },
+      { "internalType": "uint256", "name": "_proposalId", "type": "uint256" },
+    ],
+    "name": "executeProposal",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function",
+  },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "_groupId", "type": "uint256" },
+      { "internalType": "uint256", "name": "_proposalId", "type": "uint256" },
+      { "internalType": "address", "name": "_voter", "type": "address" },
+    ],
+    "name": "hasVotedOnProposal",
+    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+    "stateMutability": "view",
+    "type": "function",
+  },
 ]
 
 // HCS Topic ID for Sealed Bids
