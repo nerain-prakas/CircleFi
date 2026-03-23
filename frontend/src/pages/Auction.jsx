@@ -21,7 +21,7 @@ const getEvmAddress = async (hederaAccountId) => {
 }
 
 function Auction() {
-  const { account, connected } = useWalletContext()
+  const { account, connected, connector } = useWalletContext()
   const isConnected = connected
   const {
     getProvider,
@@ -295,6 +295,53 @@ function Auction() {
     }
   }
 
+  const submitSealedBidToHCS = useCallback(async (payload) => {
+    try {
+      // Get signer from HashPack
+      const signer = connector?.signers?.[0]
+      if (!signer) throw new Error('Wallet not connected')
+
+      // Build HCS message
+      const message = JSON.stringify({
+        groupId: payload.groupId,
+        encryptedBid: payload.encryptedBid,
+        bidder: payload.bidder,
+        timestamp: Date.now(),
+        month: payload.month || 0,
+      })
+
+      console.log('[HCS] Submitting message:', message)
+
+      // Submit to HCS using Hedera SDK
+      const { TopicMessageSubmitTransaction, TopicId } = await import('@hashgraph/sdk')
+
+      const topicId = TopicId.fromString(
+        import.meta.env.VITE_HCS_TOPIC_ID
+      )
+
+      let tx = await new TopicMessageSubmitTransaction()
+        .setTopicId(topicId)
+        .setMessage(message)
+        .freezeWithSigner(signer)
+
+      const response = await tx.executeWithSigner(signer)
+      console.log('[HCS] Submission success:', response)
+
+      return {
+        submitted: true,
+        transport: 'TopicMessageSubmitTransaction',
+        response,
+      }
+    } catch (err) {
+      console.error('[HCS] Submission failed:', err)
+      return {
+        submitted: false,
+        transport: 'failed',
+        error: err.message,
+      }
+    }
+  }, [connector])
+
   const handleSubmitBid = async () => {
     if (!encryptedBid) {
       alert('Please encrypt your bid first')
@@ -324,6 +371,20 @@ function Auction() {
       if (!HCS_TOPIC_ID) {
         throw new Error('VITE_HCS_TOPIC_ID is not set for HCS submission')
       }
+
+      const hcsPayload = {
+        type: 'sealed_bid',
+        groupId: selectedGroupId,
+        month: selectedGroup?.currentMonth ?? null,
+        sealedBidHash,
+        encryptedBid,
+        bidder: account ?? null,
+        submittedAt: new Date().toISOString(),
+      }
+
+      console.log('[HCS] Data prepared for submission', hcsPayload)
+      const hcsSubmissionResponse = await submitSealedBidToHCS(hcsPayload)
+      console.log('[HCS] Final submission result', hcsSubmissionResponse)
 
       setSubmitted(true)
       setBidAmount('')
