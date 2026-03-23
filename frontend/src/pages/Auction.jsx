@@ -5,6 +5,7 @@ import CountdownTimer from '../components/CountdownTimer'
 import { encryptBid, decryptBid } from '../utils/encryption'
 import useContract from '../hooks/useContract'
 import { HCS_TOPIC_ID } from '../utils/constants'
+import { fetchHCSMessages, decodeHCSMessage } from '../utils/hedera'
 
 const getEvmAddress = async (hederaAccountId) => {
   try {
@@ -48,12 +49,24 @@ function Auction() {
   const [manualRevealKey, setManualRevealKey] = useState('')
   const contractData = groups
 
+  const formatHbarFromTinybars = useCallback((value) => {
+    try {
+      const tinybars = BigInt(value ?? '0')
+      const whole = tinybars / 100000000n
+      const fractional = (tinybars % 100000000n).toString().padStart(8, '0').replace(/0+$/, '')
+      return fractional ? `${whole.toString()}.${fractional}` : whole.toString()
+    } catch {
+      return '0'
+    }
+  }, [])
+
   const getStorageKeyForAuction = useCallback((groupId, month) => {
     if (groupId === null || groupId === undefined || month === null || month === undefined) {
       return null
     }
-    return `sangamfi_bid_key_${groupId}_${month}`
-  }, [])
+    const accountKey = account ? String(account).replace(/[^a-zA-Z0-9_.-]/g, '_') : 'guest'
+    return `sangamfi_bid_key_${accountKey}_${groupId}_${month}`
+  }, [account])
 
   const getCurrentAuctionStorageKey = useCallback(() => {
     return getStorageKeyForAuction(selectedGroupId, selectedGroup?.currentMonth)
@@ -69,51 +82,47 @@ function Auction() {
     setLoadingBidHistory(true)
     try {
       const topicId = import.meta.env.VITE_HCS_TOPIC_ID || HCS_TOPIC_ID
-      const mirrorNodeUrl = import.meta.env.VITE_MIRROR_NODE_URL
-
-      if (!topicId || !mirrorNodeUrl) {
+      if (!topicId) {
         setBidHistory([])
         return
       }
 
-      const response = await fetch(
-        `${mirrorNodeUrl}/topics/${topicId}/messages?limit=100`
-      )
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch bid history: ${response.status}`)
-      }
-
-      const data = await response.json()
-      const bids = (data.messages || [])
-        .filter((msg) => {
-          try {
-            const decoded = atob(msg.message)
-            const parsed = JSON.parse(decoded)
-            return Number(parsed.groupId) === Number(groupId)
-          } catch {
-            return false
-          }
-        })
+      const messages = await fetchHCSMessages(topicId)
+      const bids = (messages || [])
         .map((msg, index) => {
-          const decoded = JSON.parse(atob(msg.message))
-          const timestampSeconds = Number(msg.consensus_timestamp || 0)
-          const timestamp = Number.isFinite(timestampSeconds)
-            ? new Date(timestampSeconds * 1000)
-            : new Date()
+          try {
+            const decoded = decodeHCSMessage(msg.message)
+            const parsed = JSON.parse(decoded)
+            const messageType = String(parsed.type || '').toLowerCase()
+            const sameGroup = Number(parsed.groupId) === Number(groupId)
+            const isBidMessage = messageType === 'sealed_bid' || Boolean(parsed.sealedBidHash) || Boolean(parsed.encryptedBid)
 
-          return {
-            id: `${msg.consensus_timestamp || '0'}-${index}`,
-            hash: decoded.encryptedBid || decoded.sealedBidHash || '',
-            encrypted: decoded.encryptedBid || '',
-            timestamp,
-            status: 'SEALED',
-            phase: 'SEALED',
-            submitted: true,
-            groupId: Number(groupId),
-            currentMonth: Number(decoded.currentMonth ?? selectedGroup?.currentMonth ?? 0),
+            if (!sameGroup || !isBidMessage) {
+              return null
+            }
+
+            const timestampSeconds = Number(msg.consensus_timestamp || 0)
+            const timestamp = Number.isFinite(timestampSeconds)
+              ? new Date(timestampSeconds * 1000)
+              : new Date()
+
+            return {
+              id: `${msg.consensus_timestamp || '0'}-${index}`,
+              hash: parsed.sealedBidHash || parsed.encryptedBid || msg.transaction_hash || '',
+              encrypted: parsed.encryptedBid || '',
+              timestamp,
+              status: 'SEALED',
+              phase: 'SEALED',
+              submitted: true,
+              groupId: Number(groupId),
+              currentMonth: Number(parsed.month ?? parsed.currentMonth ?? selectedGroup?.currentMonth ?? 0),
+            }
+          } catch {
+            return null
           }
         })
+        .filter((bid) => bid !== null)
+        .sort((a, b) => b.timestamp - a.timestamp)
 
       setBidHistory(bids)
     } catch (err) {
@@ -448,7 +457,7 @@ function Auction() {
                     <p className="text-sm text-gray-400">Current Month</p>
                     <p className="text-lg font-semibold text-white mb-2">{selectedGroup.currentMonth}</p>
                     <p className="text-sm text-gray-400">Pot Size</p>
-                    <p className="text-lg font-semibold text-cyan-400">{formatEther(selectedGroup.pot || '0')} HBAR</p>
+                    <p className="text-lg font-semibold text-cyan-400">{formatHbarFromTinybars(selectedGroup.pot || '0')} HBAR</p>
                   </div>
                 )}
 
@@ -576,7 +585,7 @@ function Auction() {
                     <div>
                       <p className="text-gray-400 mb-1">Current Pot</p>
                       <p className="text-2xl font-bold text-cyan-400">
-                        {formatEther(potSize || '0')} HBAR
+                        {formatHbarFromTinybars(potSize || '0')} HBAR
                       </p>
                     </div>
                     <div>

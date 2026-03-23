@@ -17,6 +17,7 @@ function Governance() {
   const [refreshing, setRefreshing] = useState(false)
   const [loadingProposals, setLoadingProposals] = useState(false)
   const [submittingProposal, setSubmittingProposal] = useState(false)
+  const [submittingVoteId, setSubmittingVoteId] = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [errorMessage, setErrorMessage] = useState(null)
   const [chainSnapshot, setChainSnapshot] = useState({ groupCount: 0, reputation: '0' })
@@ -57,6 +58,8 @@ function Governance() {
       setEvmAddress(accountId)
       return
     }
+
+    setEvmAddress(null)
 
     let isMounted = true
 
@@ -287,11 +290,19 @@ function Governance() {
   }
 
   const handleVote = async (groupId, proposalId, support) => {
+    if (!isConnected || !accountId || !evmAddress) {
+      return
+    }
+
+    const voteId = `${groupId}-${proposalId}`
     try {
+      setSubmittingVoteId(voteId)
       await executeFunction('vote', [groupId, proposalId, support])
       await fetchProposals()
     } catch (err) {
       alert(err?.message || 'Vote failed')
+    } finally {
+      setSubmittingVoteId(null)
     }
   }
 
@@ -469,6 +480,8 @@ function Governance() {
                 key={proposal.id}
                 proposal={proposal}
                 onVote={handleVote}
+                voteLocked={!isConnected || !evmAddress || loadingProposals || refreshing}
+                submittingVoteId={submittingVoteId}
                 userAddress={evmAddress}
               />
             ))
@@ -479,10 +492,12 @@ function Governance() {
   )
 }
 
-function ProposalCard({ proposal, onVote, userAddress }) {
+function ProposalCard({ proposal, onVote, userAddress, voteLocked, submittingVoteId }) {
   const totalVotes = proposal.yesVotes + proposal.noVotes
   const yesPercentage = totalVotes > 0 ? (proposal.yesVotes / totalVotes) * 100 : 0
   const isEnded = proposal.status !== 'ACTIVE'
+  const voteId = `${proposal.groupId}-${proposal.proposalId}`
+  const voteSubmitting = submittingVoteId === voteId
 
   return (
     <div className="bg-gradient-to-br from-gray-900 from-opacity-40 to-black to-opacity-10 rounded-lg p-6 border border-gray-700 border-opacity-30 hover:border-cyan-400 hover:border-opacity-50 transition-all">
@@ -567,15 +582,17 @@ function ProposalCard({ proposal, onVote, userAddress }) {
         <div className="flex gap-3">
           <button
             onClick={() => onVote(proposal.groupId, proposal.proposalId, true)}
-            className="flex-1 px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-semibold hover:from-green-600 hover:to-emerald-600 transition-all"
+            disabled={voteLocked || voteSubmitting}
+            className="flex-1 px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-semibold hover:from-green-600 hover:to-emerald-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            👍 Vote Yes
+            {voteSubmitting ? 'Submitting...' : '👍 Vote Yes'}
           </button>
           <button
             onClick={() => onVote(proposal.groupId, proposal.proposalId, false)}
-            className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-lg font-semibold hover:from-red-600 hover:to-pink-600 transition-all"
+            disabled={voteLocked || voteSubmitting}
+            className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-lg font-semibold hover:from-red-600 hover:to-pink-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            👎 Vote No
+            {voteSubmitting ? 'Submitting...' : '👎 Vote No'}
           </button>
         </div>
       )}
